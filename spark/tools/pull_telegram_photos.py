@@ -80,8 +80,10 @@ def main() -> int:
             data = c.get(f"{files}/{path.json()['result']['file_path']}").raise_for_status().content
             name = slug(msg.get("caption"), f"photo-{msg.get('message_id')}")
             dest, n = out / f"{name}.jpg", 2
-            while dest.exists():
+            while dest.exists() and dest.read_bytes() != data:
                 dest, n = out / f"{name}-{n}.jpg", n + 1
+            if dest.exists():  # already pulled on an earlier run
+                continue
             fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
