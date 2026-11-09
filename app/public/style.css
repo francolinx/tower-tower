@@ -1,0 +1,45 @@
+:root {
+  --bg: #0b0b0b;        /* #f5f5f5 on #0b0b0b ≈ 18:1 contrast (≥ 7:1 AAA) */
+  --fg: #f5f5f5;
+  --muted: #c8c8c8;     /* ≈ 12:1 on --bg */
+  --accent: #ffd54a;    /* ≈ 14:1 on --bg */
+  --panel: #161616;
+  --cap-size: 34px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+header { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 16px; }
+h1 { font-size: 20px; letter-spacing: .15em; margin: 0; color: var(--accent); }
+label { color: var(--muted); font-size: 15px; }
+input, button { font: inherit; font-size: 17px; color: var(--fg); background: #222; border: 1px solid #555;
+  border-radius: 8px; padding: 8px 12px; }
+button { cursor: pointer; }
+button[aria-pressed="true"] { background: var(--accent); color: #000; border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.room input { width: 12ch; margin-left: 6px; }
+.status { font-size: 15px; color: var(--muted); }
+.status.live { color: var(--accent); }
+main { padding: 0 16px 24px; max-width: 960px; margin: 0 auto; }
+.caption-wrap { padding: 16px 0; }
+.captions {
+  font-size: var(--cap-size); line-height: 1.3; font-weight: 600;
+  max-width: 42ch;                      /* ≤ 42 chars per line */
+  height: calc(3 * 1.3em);              /* 3 lines visible */
+  overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
+  overflow-wrap: anywhere; margin: 0 auto;
+}
+.controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+.mic[aria-pressed="true"] { background: #c62828; color: #fff; border-color: #c62828; }
+.panel { background: var(--panel); border-radius: 12px; padding: 16px; margin-top: 16px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.row input { flex: 1 1 12ch; min-width: 0; }
+.results { padding-left: 20px; margin: 12px 0 0; }
+.results li { margin: 8px 0; }
+.results button { background: none; border: none; padding: 0; text-align: left; color: var(--fg); font-size: 17px; }
+.results .meta { color: var(--accent); font-size: 14px; display: block; }
+.moment { margin-top: 12px; border-left: 4px solid var(--accent); padding-left: 12px; font-size: 19px; line-height: 1.4; }
+.moment mark { background: var(--accent); color: #000; }
+.hint { color: var(--muted); font-size: 14px; }
+.hint a { color: var(--accent); }
+footer { color: var(--muted); font-size: 13px; text-align: center; padding: 16px; }
