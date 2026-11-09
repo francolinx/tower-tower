@@ -16,16 +16,14 @@ import os
 import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
 
 import httpx
 from fastapi import (
     FastAPI,
-    File,
     HTTPException,
     Query,
+    Request,
     Response,
-    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -322,18 +320,23 @@ async def venue_nearest(kind: str, from_: str = Query(alias="from"), step_free: 
 
 
 @app.post("/api/locate")
-async def locate_from_sign(image: Annotated[UploadFile, File()]):
+async def locate_from_sign(request: Request):
     """Photo of a room sign -> venue node. The image lives in memory for this request only."""
-    if image.content_type not in ("image/jpeg", "image/jpg", "image/png"):
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type not in ("image/jpeg", "image/png"):
         raise HTTPException(status_code=415, detail="send a JPEG or PNG")
-    data = await image.read(locate.MAX_IMAGE_BYTES + 1)
-    try:
-        if len(data) > locate.MAX_IMAGE_BYTES:
+    buf = bytearray()
+    async for chunk in request.stream():
+        if len(buf) + len(chunk) > locate.MAX_IMAGE_BYTES:
             raise HTTPException(status_code=413, detail="image must be 2 MB or smaller")
+        buf.extend(chunk)
+    data = bytes(buf)
+    del buf
+    try:
         t0 = time.monotonic()
         with tracer.start_as_current_span("locate", attributes={"image.bytes": len(data)}) as span:
             try:
-                sign = await locate.read_sign(asr_client, data, image.content_type)
+                sign = await locate.read_sign(asr_client, data, content_type)
             except httpx.HTTPError as e:
                 log.warning("locate vlm error type=%s", type(e).__name__)
                 raise HTTPException(status_code=503, detail="sign reader unavailable") from None
@@ -345,7 +348,6 @@ async def locate_from_sign(image: Annotated[UploadFile, File()]):
         return {"node": node, "name": venue.nodes[node]["name"] if node else None, "confidence": conf}
     finally:
         del data  # never stored
-        await image.close()
 
 
 class LocationIn(BaseModel):
