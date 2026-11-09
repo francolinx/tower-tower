@@ -19,7 +19,7 @@ All inference runs locally on a DGX Spark.
  │   chunk ─► ASR ─► embed ─► index ─► percolate ─► broadcast caption       │
  │            │        │        │          │                                │
  │   Parakeet v2   bge-small  Elasticsearch  interests ─► Telegram alert    │
- │   :8090       CUDA   moments/talks/slides percolator (topic+room+link)│
+ │   :8090       CUDA   moments/talks/slides percolator (topic+room+link)   │
  │                             :9200                                        │
  │   Qwen3-VL-4B (vLLM :8001): reads room signs + banners -> venue node     │
  │   venue graphs (theshop, saltpalace) -> step-free routes, SVG level map  │
