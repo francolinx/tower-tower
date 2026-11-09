@@ -59,6 +59,16 @@ def main() -> int:
     out = Path(a.out).expanduser()
     out.mkdir(parents=True, exist_ok=True, mode=0o700)
     chats = known_chats()
+    try:
+        return pull(api, files, out, chats, a.ack)
+    except httpx.HTTPError as e:
+        # never print the exception text: its request URL contains the bot token
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        print(f"telegram request failed: {type(e).__name__} status={status}", file=sys.stderr)
+        return 3
+
+
+def pull(api: str, files: str, out: Path, chats: set[int], ack: bool) -> int:
     with httpx.Client(timeout=30) as c:
         r = c.get(f"{api}/getUpdates", params={"timeout": 0, "allowed_updates": '["message"]'})
         if r.status_code == 409:
@@ -88,8 +98,8 @@ def main() -> int:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
             saved += 1
-            print(f"saved {dest.name} ({len(data) // 1024} KB)")
-        if a.ack and updates:
+            print(f"saved photo {saved} ({len(data) // 1024} KB)")  # caption-derived names stay off stdout
+        if ack and updates:
             c.get(f"{api}/getUpdates", params={"offset": updates[-1]["update_id"] + 1, "timeout": 0})
     print(f"updates={len(updates)} saved={saved} skipped_unknown_chat={skipped}")
     return 0
