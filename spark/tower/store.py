@@ -17,6 +17,9 @@ MOMENTS = "moments"
 TALKS = "talks"
 INTERESTS = "interests"
 VENUE = "venue"
+SLIDES = "slides"
+SLIDE_FIELDS = ["talk_id", "title", "room", "room_name", "starts_at", "page", "url", "text"]
+MAX_SLIDE_CHARS = 2000
 REQUIRED_MOMENT_FIELDS = ("talk_id", "room", "t_start", "t_end", "@timestamp")
 BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
@@ -47,7 +50,7 @@ def make_moment(
     return doc
 
 
-def rrf_query(q: str, q_vec: list[float], size: int = 10) -> dict:
+def rrf_query(q: str, q_vec: list[float], size: int = 10, source: list[str] | None = None) -> dict:
     return {
         "retriever": {
             "rrf": {
@@ -60,7 +63,30 @@ def rrf_query(q: str, q_vec: list[float], size: int = 10) -> dict:
             }
         },
         "size": size,
-        "_source": ["talk_id", "room", "t_start", "t_end", "text", "@timestamp"],
+        "_source": source or ["talk_id", "room", "t_start", "t_end", "text", "@timestamp"],
+    }
+
+
+def make_slide_page(
+    *, talk_id: str, title: str, room_name: str, starts_at: str, page: int, url: str, text: str,
+    embedding: list[float], timestamp: str,
+) -> dict:
+    """One indexed slide page. Slides are the speakers' published decks (public), linked by page."""
+    if not starts_at.endswith("Z") or not timestamp.endswith("Z"):
+        raise ValueError("slide timestamps must be UTC with Z suffix")
+    if page < 1 or not url.startswith("https://"):
+        raise ValueError("slide page needs page >= 1 and an https url")
+    return {
+        "talk_id": talk_id,
+        "title": title,
+        "room": slugify(room_name),
+        "room_name": room_name,
+        "starts_at": starts_at,
+        "page": int(page),
+        "url": url,
+        "@timestamp": timestamp,
+        "text": text[:MAX_SLIDE_CHARS],
+        "embedding": embedding,
     }
 
 
@@ -72,7 +98,7 @@ class Store:
             request_timeout=10,
         )
 
-    def ensure_indices(self, names=(MOMENTS, TALKS, INTERESTS, VENUE)) -> None:
+    def ensure_indices(self, names=(MOMENTS, TALKS, INTERESTS, VENUE, SLIDES)) -> None:
         for name in names:
             path = MAPPINGS_DIR / f"{name}.json"
             if not path.exists() or self.es.indices.exists(index=name):
@@ -91,6 +117,13 @@ class Store:
         for h in hits:
             h["talk_title"] = titles.get(h["talk_id"])
         return hits
+
+    def search_slides(self, q: str, q_vec: list[float], size: int = 5) -> list[dict]:
+        try:
+            r = self.es.search(index=SLIDES, body=rrf_query(q, q_vec, size, SLIDE_FIELDS))
+        except NotFoundError:
+            return []
+        return [h["_source"] | {"id": h["_id"]} for h in r["hits"]["hits"]]
 
     def moments_around(self, talk_id: str, t: float, window: float = 30.0) -> list[dict]:
         r = self.es.search(

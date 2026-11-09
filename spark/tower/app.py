@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 from tower import embed, locate
 from tower.alerts import Alerter, ChatRefs, Telegram
 from tower.chunker import Windower, merge_overlap
-from tower.store import Store, make_moment, slugify
+from tower.store import ES_DOWN, Store, make_moment, slugify
 from tower.telemetry import record_caption, tracer
 from tower.timeutil import to_utc_iso, utc_now_iso
 from tower.venue import Venue
@@ -249,10 +249,14 @@ class SearchIn(BaseModel):
 async def search(body: SearchIn):
     q, size = body.q.strip(), body.size
     if not q:
-        return {"hits": []}
+        return {"hits": [], "slides": []}
     vec = await asyncio.to_thread(embed.embed_query, q)
     hits = await asyncio.to_thread(store.search, q, vec, size)
-    return {"hits": hits}
+    try:
+        slides = await asyncio.to_thread(store.search_slides, q, vec, 5)
+    except ES_DOWN:
+        slides = []
+    return {"hits": hits, "slides": slides}
 
 
 class InterestIn(BaseModel):

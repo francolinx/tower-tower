@@ -143,8 +143,8 @@
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ q }),
       });
-      const { hits } = await r.json();
-      list.innerHTML = hits.length ? '' : '<li>no moments yet</li>';
+      const { hits, slides = [] } = await r.json();
+      list.innerHTML = hits.length || slides.length ? '' : '<li>no moments yet</li>';
       for (const h of hits) {
         const li = document.createElement('li');
         const b = document.createElement('button');
@@ -155,6 +155,19 @@
         b.appendChild(document.createTextNode(h.text));
         b.onclick = () => showMoment(h.talk_id, h.t_start);
         li.appendChild(b); list.appendChild(li);
+      }
+      // slide pages from the speakers' published decks: open the PDF at that page
+      for (const p of slides) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = `${p.url}#page=${p.page}`; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.className = 'slide-hit';
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = `slides · ${p.room_name} · ${p.title} · p.${p.page}`;
+        a.appendChild(meta);
+        a.appendChild(document.createTextNode(p.text.slice(0, 160) + (p.text.length > 160 ? '…' : '')));
+        li.appendChild(a); list.appendChild(li);
       }
     } catch { list.innerHTML = '<li>search unavailable</li>'; }
   };

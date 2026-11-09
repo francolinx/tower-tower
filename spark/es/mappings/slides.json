@@ -1,0 +1,17 @@
+{
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "talk_id":    { "type": "keyword" },
+      "title":      { "type": "text", "analyzer": "english" },
+      "room":       { "type": "keyword" },
+      "room_name":  { "type": "keyword" },
+      "starts_at":  { "type": "date" },
+      "page":       { "type": "integer" },
+      "url":        { "type": "keyword", "index": false },
+      "@timestamp": { "type": "date" },
+      "text":       { "type": "text", "analyzer": "english" },
+      "embedding":  { "type": "dense_vector", "dims": 384, "index": true, "similarity": "cosine" }
+    }
+  }
+}
