@@ -37,6 +37,7 @@ MAX_SOURCES_PER_ROOM = 2
 def audio_key_ok(key: str | None) -> bool:
     return bool(AUDIO_KEY) and key is not None and hmac.compare_digest(key.encode(), AUDIO_KEY.encode())
 
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("tower-core")
 
