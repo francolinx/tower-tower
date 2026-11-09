@@ -9,6 +9,7 @@ Privacy: logs carry room, counts and durations only. Audio is never written to d
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -23,6 +24,7 @@ from tower.chunker import Windower, merge_overlap
 from tower.timeutil import utc_now_iso
 
 ASR_URL = os.environ.get("ASR_URL", "http://127.0.0.1:8090")
+AUDIO_TOKEN = os.environ["TOWER_AUDIO_TOKEN"]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("tower-core")
@@ -122,7 +124,10 @@ async def process_window(room: str, pcm: bytes, t_start: float, t_end: float, t_
 
 
 @app.websocket("/ws/audio")
-async def ws_audio(ws: WebSocket, room: str):
+async def ws_audio(ws: WebSocket, room: str, token: str = ""):
+    if not hmac.compare_digest(token, AUDIO_TOKEN):
+        await ws.close(code=1008)
+        return
     await ws.accept()
     hub.sources[room] += 1
     windower = Windower(1.5, 0.5)

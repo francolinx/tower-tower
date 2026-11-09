@@ -28,6 +28,9 @@ services:
     image: vllm/vllm-openai:v0.27.1
     container_name: tower-llm
     ipc: host
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
