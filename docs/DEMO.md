@@ -7,7 +7,7 @@ an attendee with an interest saved ("eBPF security") and Telegram open. Dash0 an
 |---|---|---|
 | 0:00–0:15 | Problem | "KubeCon captions the room you're in; Tower is for the rooms you're not in." |
 | 0:15–0:40 | Live captions | Pitch into laptop A; captions on phone B within a second. "Parakeet on a DGX Spark. No audio stored, nothing leaves the box." |
-| 0:40–1:00 | Alert → "you're at 150" → step-free route | Teammate says "eBPF security" in room B. Phone B buzzes: *"eBPF security" just came up in 255 EF — You're at 150 D-F. 4 min, step-free: Walk from 150 D-F to North Foyer; Walk along North Foyer to 155 Foyer… full route*. Tap the link: numbered steps (elevator, never an escalator), **Speak** reads them out. |
+| 0:40–1:00 | Alert → "you're at 150" → step-free route | Teammate says "eBPF security" in room B. Phone B buzzes: *"eBPF security" just came up in 255 EF* + link (topic, room, link — never your location). Tap it: the page already knows you're at 150 D-F (saved on the phone, not the server) and shows the step-free route to 255 EF — numbered steps, elevator never escalator; **Speak** reads them out. |
 | 1:00–1:10 | Where am I, by sign | 📷 Sign → photo of a room sign → picker fills in ("255 EF, 100% match"). "Signs only, never faces or GPS." |
 | 1:10–1:25 | Search the moment | Search "the eBPF security bit" → hybrid hit (BM25 + vectors, RRF) with room + talk + timestamp → jump to the moment. |
 | 1:25–1:40 | Operate it | Dash0: caption latency p50/p95 per room, SLO `captions.within_slo / captions.total` ≥ 95 % green; a trace (`caption.chunk` → `asr` → `embed` → `index` → `percolate`) with no transcript text in it. |

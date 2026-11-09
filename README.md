@@ -46,7 +46,8 @@ KubeCon + CloudNativeCon North America 2026 (Salt Lake City) is where we test it
   map and the event's accessibility page. Coordinates are rough (0–100), and walking times are estimates.
 - **Wayfinding:** `POST /api/route {from, to, step_free}` runs Dijkstra over the graph. Step-free mode only uses
   elevators and step-free links. `GET /api/venue/nearest?kind=quiet&from=...` picks candidates from the ES `venue`
-  index (geo_point) and the shortest walk from the graph. Alerts add "You're at … N min, step-free: … full route".
+  index (geo_point) and the shortest walk from the graph. Alerts stay topic + room + link only (no location in Telegram); the moment page
+  prefills "Take me to" with that room and reads your saved "Where am I" from the browser.
 - **Where am I:** pick from the list, or photograph the nearest **room sign**. Qwen3-VL-4B (local, :8001) reads only
   the sign's text and we fuzzy-match it to a venue node.
 
