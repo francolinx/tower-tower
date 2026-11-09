@@ -36,7 +36,7 @@ from tower.chunker import Windower, merge_overlap
 from tower.store import ES_DOWN, Store, make_moment, slugify
 from tower.telemetry import record_caption, tracer
 from tower.timeutil import to_utc_iso, utc_now_iso
-from tower.venue import Venue
+from tower.venue import Venues
 
 ASR_URL = os.environ.get("ASR_URL", "http://127.0.0.1:8090")
 MIN_SEG_S, MAX_SEG_S = 3.0, 7.0  # moment length bounds
@@ -94,7 +94,15 @@ hub = Hub()
 asr_client: httpx.AsyncClient | None = None
 store: Store | None = None
 alerter: Alerter | None = None
-venue = Venue.load()
+venues = Venues()
+saltpalace = venues.get("saltpalace")  # talks, alerts and the ES geo index are Salt Palace
+
+
+def pick_venue(name: str | None):
+    try:
+        return venues.get(name)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="unknown venue") from None
 
 
 @app.on_event("startup")
@@ -103,9 +111,11 @@ async def _startup() -> None:
     asr_client = httpx.AsyncClient(base_url=ASR_URL, timeout=10.0)
     store = Store()
     await asyncio.to_thread(store.ensure_indices)
-    await asyncio.to_thread(store.index_venue, venue.geo_docs())
-    alerter = Alerter(store, Telegram(os.environ.get("TG_TOKEN")), ChatRefs(), venue)
-    asyncio.create_task(alerter.tg.poll(alerter.on_start))
+    await asyncio.to_thread(store.index_venue, saltpalace.geo_docs())
+    alerter = Alerter(store, Telegram(os.environ.get("TG_TOKEN")), ChatRefs(), saltpalace)
+    # TOWER_TG_POLL=0 pauses getUpdates so tools/pull_telegram_photos.py can read the queue.
+    if os.environ.get("TOWER_TG_POLL", "1") != "0":
+        asyncio.create_task(alerter.tg.poll(alerter.on_start))
     log.info("telegram alerts %s", "enabled" if alerter.tg.enabled else "disabled (no TG_TOKEN)")
     await asyncio.to_thread(embed.model)  # load bge-small on CUDA before the first chunk
     log.info("store + embeddings ready")
@@ -272,22 +282,30 @@ async def add_interest(body: InterestIn):
 
 
 # --- venue: wayfinding inside the Salt Palace + Hyatt (KubeCon NA 2026 test venue)
+@app.get("/api/venue/graph")
+async def venue_graph(venue_name: str | None = Query(default=None, alias="venue", max_length=40)):
+    """Whole graph (nodes with x/y + edges), same shape for every venue. Default: the demo venue."""
+    v = pick_venue(venue_name)
+    return {"venue": venues.name_of(venue_name), "venues": venues.names(), **v.graph()}
+
+
 @app.get("/api/venue/nodes")
-async def venue_nodes():
-    return {"nodes": venue.public_nodes()}
+async def venue_nodes(venue_name: str | None = Query(default=None, alias="venue", max_length=40)):
+    return {"venue": venues.name_of(venue_name), "nodes": pick_venue(venue_name).public_nodes()}
 
 
 class RouteIn(BaseModel):
     from_: str = Field(alias="from", min_length=1, max_length=80)
     to: str = Field(min_length=1, max_length=80)
     step_free: bool = False
+    venue: str | None = Field(default=None, max_length=40)
 
 
 @app.post("/api/route")
 async def route(body: RouteIn):
     try:
         with tracer.start_as_current_span("route", attributes={"step_free": body.step_free}) as span:
-            r = venue.route(body.from_, body.to, step_free=body.step_free)
+            r = pick_venue(body.venue).route(body.from_, body.to, step_free=body.step_free)
             span.set_attribute("route.steps", len(r["steps"]))
             span.set_attribute("route.seconds", r["total_seconds"])
         return r
@@ -298,34 +316,46 @@ async def route(body: RouteIn):
 
 
 @app.get("/api/venue/nearest")
-async def venue_nearest(kind: str, from_: str = Query(alias="from"), step_free: bool = False):
+async def venue_nearest(kind: str, from_: str = Query(alias="from"), step_free: bool = False,
+                        venue_name: str | None = Query(default=None, alias="venue", max_length=40)):
     """Candidates from ES geo_distance on the venue index, then the shortest walk via the graph."""
+    v = pick_venue(venue_name)
+    if venues.name_of(venue_name) != "saltpalace":  # only Salt Palace is in the ES geo index
+        try:
+            return v.nearest(kind, from_, step_free=step_free)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="unknown place or kind") from None
+        except ValueError:
+            raise HTTPException(status_code=404, detail="nothing of that kind reachable") from None
     try:
-        src = venue.resolve(from_)
+        src = v.resolve(from_)
     except KeyError:
         raise HTTPException(status_code=404, detail="unknown place") from None
-    n = venue.nodes[src]
+    n = v.nodes[src]
     cands = await asyncio.to_thread(store.venue_candidates, kind, n["y"] / 1000, n["x"] / 1000)
     best = None
     for c in cands:
         try:
-            r = venue.route(src, c, step_free=step_free)
+            r = v.route(src, c, step_free=step_free)
         except (KeyError, ValueError):
             continue
         if best is None or r["total_seconds"] < best["total_seconds"]:
-            best = {"node": c, "name": venue.nodes[c]["name"],
+            best = {"node": c, "name": v.nodes[c]["name"],
                     "total_seconds": r["total_seconds"], "route": r}
     if best is None:  # ES down or no geo hit: pure graph search
         try:
-            best = venue.nearest(kind, src, step_free=step_free)
+            best = v.nearest(kind, src, step_free=step_free)
         except (KeyError, ValueError):
             raise HTTPException(status_code=404, detail="nothing of that kind reachable") from None
     return best
 
 
 @app.post("/api/locate")
-async def locate_from_sign(request: Request):
+async def locate_from_sign(request: Request,
+                           venue_name: str | None = Query(default=None, alias="venue", max_length=40),
+                           from_: str | None = Query(default=None, alias="from", max_length=80)):
     """Photo of a room sign -> venue node. The image lives in memory for this request only."""
+    v = pick_venue(venue_name)
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type not in ("image/jpeg", "image/png"):
         raise HTTPException(status_code=415, detail="send a JPEG or PNG")
@@ -340,16 +370,21 @@ async def locate_from_sign(request: Request):
         t0 = time.monotonic()
         with tracer.start_as_current_span("locate", attributes={"image.bytes": len(data)}) as span:
             try:
-                sign = await locate.read_sign(asr_client, data, content_type)
+                sign, text = await locate.read_sign(asr_client, data, content_type) or (None, None)
             except httpx.HTTPError as e:
                 log.warning("locate vlm error type=%s", type(e).__name__)
                 raise HTTPException(status_code=503, detail="sign reader unavailable") from None
-            node, conf = locate.match_sign(sign, venue.public_nodes()) if sign else (None, 0.0)
+            node, conf = locate.match_sign(sign, v.public_nodes()) if sign else (None, 0.0)
+            rule = "room" if node else None
+            if node is None:  # banners, restroom signs, floor numbers
+                node, conf, rule = locate.match_banner(" ".join(filter(None, [sign, text])), v, from_)
             latency = time.monotonic() - t0
             span.set_attribute("locate.latency_s", round(latency, 3))
             span.set_attribute("locate.matched", node is not None)
-        log.info("locate bytes=%d latency_s=%.2f matched=%s", len(data), latency, node is not None)
-        return {"node": node, "name": venue.nodes[node]["name"] if node else None, "confidence": conf}
+            span.set_attribute("locate.rule", rule or "none")
+        log.info("locate bytes=%d latency_s=%.2f rule=%s", len(data), latency, rule or "none")
+        return {"node": node, "name": v.nodes[node]["name"] if node else None, "confidence": conf,
+                "rule": rule}
     finally:
         del data  # never stored
 

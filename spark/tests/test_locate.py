@@ -24,7 +24,7 @@ def test_locate_accepts_raw_image_body_and_enforces_size_limit(monkeypatch):
     async def read_sign(client, image, mime):
         received["image"] = image
         received["mime"] = mime
-        return None
+        return None, None
 
     monkeypatch.setattr(app_module.locate, "read_sign", read_sign)
     client = TestClient(app_module.app)
@@ -61,3 +61,22 @@ def test_fuzzy_text_match_requires_a_clear_long_match():
         {"id": "reefs", "name": "Capitol Reefs", "aliases": []},
     ]
     assert match_sign("Capitol Ree", ambiguous_nodes)[0] is None
+
+
+def test_saltpalace_nearest_uses_selected_venue_for_graph_fallback(monkeypatch):
+    class EmptyStore:
+        def venue_candidates(self, *args):
+            return []
+
+    monkeypatch.setattr(app_module, "store", EmptyStore())
+    client = TestClient(app_module.app)
+    response = client.get(
+        "/api/venue/nearest",
+        params={"kind": "restroom-all-gender", "from": "255-ef", "venue": "saltpalace"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["node"]
+    assert result["route"]["from"] == "salt-palace-level-2-255-ef"
+    assert result["route"]["to"] == result["node"]
