@@ -9,3 +9,16 @@
 node_modules/
 npm-debug.log*
 .DS_Store
+
+# TOWER
+*.env
+SETUP_REPORT.md
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.wav
+*.webm
+sessionize*.json
+spark/demo/*.raw
