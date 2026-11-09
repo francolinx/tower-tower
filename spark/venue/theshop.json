@@ -70,7 +70,7 @@
     {"a": "shop-l2-sw", "b": "shop-l2-nw", "seconds": 30, "step_free": true},
     {"a": "shop-l2-center", "b": "shop-l2-ne", "seconds": 30, "step_free": true},
     {"a": "shop-l2-center", "b": "shop-l2-nw", "seconds": 30, "step_free": true},
-    {"a": "shop-l2-ne", "b": "shop-l2-restroom", "seconds": 10, "step_free": true},
+    {"a": "shop-l2-ne", "b": "shop-l2-restroom", "seconds": 30, "step_free": true},
     {"a": "shop-l2-center", "b": "shop-l2-restroom", "seconds": 25, "step_free": true},
 
     {"a": "shop-l3-elevator", "b": "shop-l3-reception", "seconds": 10, "step_free": true},
@@ -89,7 +89,7 @@
     {"a": "shop-l3-skeleton", "b": "shop-l3-elastic-table", "seconds": 20, "step_free": true},
     {"a": "shop-l3-fridge", "b": "shop-l3-kitchen", "seconds": 10, "step_free": true},
     {"a": "shop-l3-kitchen", "b": "shop-l3-restroom", "seconds": 10, "step_free": true},
-    {"a": "shop-l3-kitchen", "b": "shop-l3-ne", "seconds": 15, "step_free": true},
+    {"a": "shop-l3-kitchen", "b": "shop-l3-ne", "seconds": 30, "step_free": true},
     {"a": "shop-l3-elastic-table", "b": "shop-l3-restroom", "seconds": 20, "step_free": true},
     {"a": "shop-l3-elastic-table", "b": "shop-l3-glassroom", "seconds": 20, "step_free": true},
     {"a": "shop-l3-sonar-table", "b": "shop-l3-glassroom", "seconds": 25, "step_free": true},
@@ -101,8 +101,8 @@
     {"a": "shop-l4-center", "b": "shop-l4-nw", "seconds": 30, "step_free": true},
     {"a": "shop-l4-center", "b": "shop-l4-ne", "seconds": 30, "step_free": true},
     {"a": "shop-l4-center", "b": "shop-l4-se", "seconds": 30, "step_free": true},
-    {"a": "shop-l4-ne", "b": "shop-l4-restroom", "seconds": 10, "step_free": true},
-    {"a": "shop-l4-se", "b": "shop-l4-restroom", "seconds": 25, "step_free": true},
+    {"a": "shop-l4-ne", "b": "shop-l4-restroom", "seconds": 30, "step_free": true},
+    {"a": "shop-l4-se", "b": "shop-l4-restroom", "seconds": 8, "step_free": true},
 
     {"a": "shop-roof-elevator", "b": "shop-roof-door", "seconds": 10, "step_free": true},
     {"a": "shop-roof-stairs", "b": "shop-roof-door", "seconds": 10, "step_free": true},
