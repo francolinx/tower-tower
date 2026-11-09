@@ -69,7 +69,18 @@
   };
 
   // ---- mic mode: this device becomes the room's audio source
+  function roomKey() {
+    let k = '';
+    try { k = localStorage.getItem('tower.audioKey') || ''; } catch {}
+    if (!k) {
+      k = (prompt('Room device key (from the TOWER operator):') || '').trim();
+      if (k) { try { localStorage.setItem('tower.audioKey', k); } catch {} }
+    }
+    return k;
+  }
   async function startMic() {
+    const key = roomKey();
+    if (!key) throw { name: 'NoKey' };
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
@@ -77,11 +88,15 @@
     await micCtx.audioWorklet.addModule('/pcm-worklet.js');
     const src = micCtx.createMediaStreamSource(micStream);
     const node = new AudioWorkletNode(micCtx, 'pcm-worklet');
-    micWs = new WebSocket(`${cfg.sparkWs}/ws/audio?room=${encodeURIComponent(room())}`);
+    micWs = new WebSocket(`${cfg.sparkWs}/ws/audio?room=${encodeURIComponent(room())}&key=${encodeURIComponent(key)}`);
     micWs.binaryType = 'arraybuffer';
     node.port.onmessage = (ev) => { if (micWs && micWs.readyState === 1) micWs.send(ev.data); };
     src.connect(node);
-    micWs.onclose = () => stopMic();
+    micWs.onclose = (ev) => {
+      if (ev.code === 4401) { try { localStorage.removeItem('tower.audioKey'); } catch {} setStatus('wrong room key'); }
+      if (ev.code === 4429) setStatus('room already has 2 audio sources');
+      stopMic();
+    };
     $('mic').setAttribute('aria-pressed', 'true');
     $('mic').textContent = '■ Stop captioning';
   }
