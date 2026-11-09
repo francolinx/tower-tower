@@ -324,23 +324,23 @@ async def venue_nearest(kind: str, from_: str = Query(alias="from"), step_free: 
         except ValueError:
             raise HTTPException(status_code=404, detail="nothing of that kind reachable") from None
     try:
-        src = venue.resolve(from_)
+        src = v.resolve(from_)
     except KeyError:
         raise HTTPException(status_code=404, detail="unknown place") from None
-    n = venue.nodes[src]
+    n = v.nodes[src]
     cands = await asyncio.to_thread(store.venue_candidates, kind, n["y"] / 1000, n["x"] / 1000)
     best = None
     for c in cands:
         try:
-            r = venue.route(src, c, step_free=step_free)
+            r = v.route(src, c, step_free=step_free)
         except (KeyError, ValueError):
             continue
         if best is None or r["total_seconds"] < best["total_seconds"]:
-            best = {"node": c, "name": venue.nodes[c]["name"],
+            best = {"node": c, "name": v.nodes[c]["name"],
                     "total_seconds": r["total_seconds"], "route": r}
     if best is None:  # ES down or no geo hit: pure graph search
         try:
-            best = venue.nearest(kind, src, step_free=step_free)
+            best = v.nearest(kind, src, step_free=step_free)
         except (KeyError, ValueError):
             raise HTTPException(status_code=404, detail="nothing of that kind reachable") from None
     return best

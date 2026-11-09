@@ -90,8 +90,88 @@ def test_photo_puller_helpers():
     spec = importlib.util.spec_from_file_location("pull", "tools/pull_telegram_photos.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
-    assert m.slug("Dash0 table, L3!", "x") == "dash0-table-l3" and m.slug(None, "photo-7") == "photo-7"
     sizes = [{"file_id": "a", "width": 90, "height": 90, "file_size": 1000},
              {"file_id": "b", "width": 1280, "height": 960, "file_size": 200_000},
              {"file_id": "c", "width": 4000, "height": 3000, "file_size": 3_000_000}]
     assert m.best_photo(sizes)["file_id"] == "b"
+
+
+def test_telegram_request_error_does_not_print_token(capsys):
+    import importlib.util
+
+    import httpx
+
+    spec = importlib.util.spec_from_file_location("pull", "tools/pull_telegram_photos.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    token = "test-secret-token"
+    url = f"https://api.telegram.org/bot{token}/getUpdates"
+
+    class Client:
+        def get(self, request_url, **kwargs):
+            request = httpx.Request("GET", request_url)
+            return httpx.Response(500, request=request)
+
+    assert m.telegram_get(Client(), url) is None
+    output = capsys.readouterr()
+    assert token not in output.out + output.err
+    assert "HTTP 500" in output.err
+
+
+def test_photo_puller_does_not_print_caption(capsys, monkeypatch, tmp_path):
+    import importlib.util
+    import sys
+
+    spec = importlib.util.spec_from_file_location("pull", "tools/pull_telegram_photos.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    caption = "Private caption text"
+    monkeypatch.setenv("TG_TOKEN", "test-secret-token")
+    monkeypatch.setattr(sys, "argv", ["pull_telegram_photos.py", "--out", str(tmp_path)])
+    monkeypatch.setattr(m, "known_chats", lambda: {123})
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, payload=None, content=b""):
+            self.payload = payload
+            self.content = content
+
+        def json(self):
+            return self.payload
+
+        def raise_for_status(self):
+            pass
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, **kwargs):
+            if url.endswith("/getUpdates"):
+                return Response({"result": [{
+                    "update_id": 1,
+                    "message": {
+                        "chat": {"id": 123},
+                        "photo": [{"file_id": "photo-id", "file_size": 100, "width": 10, "height": 10}],
+                        "caption": caption,
+                        "message_id": 7,
+                    },
+                }]})
+            if url.endswith("/getFile"):
+                return Response({"result": {"file_path": "photos/photo.jpg"}})
+            return Response(content=b"photo bytes")
+
+    monkeypatch.setattr(m.httpx, "Client", Client)
+    assert m.main() == 0
+
+    output = capsys.readouterr()
+    assert caption not in output.out + output.err
+    assert "saved photo" in output.out
+    assert (tmp_path / "photo-7.jpg").read_bytes() == b"photo bytes"
