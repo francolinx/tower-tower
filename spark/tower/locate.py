@@ -25,6 +25,7 @@ PROMPT = (
 
 def _norm(s: str) -> str:
     s = s.lower().replace("&", " ")
+    s = re.sub(r"\blevel\s*\d+\b", " ", s)
     s = re.sub(r"\b(room|hall|level|salt palace|hyatt regency|ballroom)\b", " ", s)
     return re.sub(r"[^a-z0-9]+", "", s)
 
@@ -48,18 +49,30 @@ def match_sign(sign: str, nodes: list[dict]) -> tuple[str | None, float]:
     target = _norm(sign)
     if not target:
         return None, 0.0
-    best_id, best = None, 0.0
+
+    scores = {}
+    has_digits = any(char.isdigit() for char in target)
     for n in nodes:
         for cand in [n["id"], n.get("name", ""), *n.get("aliases", [])]:
             c = _norm(cand)
             if not c:
                 continue
-            score = 1.0 if c == target else difflib.SequenceMatcher(None, target, c).ratio()
-            if score > best:
-                best_id, best = n["id"], score
-    if best < 0.6:
-        return None, round(best, 2)
-    return best_id, round(best, 2)
+            if c == target:
+                score = 1.0
+            elif not has_digits and len(target) >= 6:
+                score = difflib.SequenceMatcher(None, target, c).ratio()
+            else:
+                continue
+            scores[n["id"]] = max(scores.get(n["id"], 0.0), score)
+
+    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    if not ranked:
+        return None, 0.0
+    best_id, best = ranked[0]
+    confidence = round(best, 2)
+    if best < 0.9 or (len(ranked) > 1 and best - ranked[1][1] <= 0.05):
+        return None, confidence
+    return best_id, confidence
 
 
 async def read_sign(client: httpx.AsyncClient, image: bytes, mime: str = "image/jpeg") -> str | None:
