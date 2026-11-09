@@ -50,8 +50,40 @@
       </form>
       <p id="interest-status" class="hint" aria-live="polite"></p>
     </section>
+
+    <section class="panel" id="wayfinding" aria-labelledby="wf-h">
+      <h2 id="wf-h">Find your way</h2>
+      <datalist id="venue-nodes"></datalist>
+      <form id="route-form">
+        <label for="where">Where am I</label>
+        <div class="row">
+          <input id="where" list="venue-nodes" placeholder="e.g. 150 D-F" autocomplete="off">
+          <button type="button" id="camera" aria-label="Read a room sign with the camera">📷 Sign</button>
+        </div>
+        <video id="cam" playsinline muted hidden></video>
+        <button type="button" id="snap" hidden>Read sign</button>
+        <p id="locate-status" class="hint" aria-live="polite">Locating uses room signs only, never faces or GPS.</p>
+        <label for="dest">Take me to</label>
+        <div class="row">
+          <input id="dest" list="venue-nodes" placeholder="e.g. 255 EF" autocomplete="off">
+        </div>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="stepfree"> Step-free (elevators only)</label>
+        </div>
+        <div class="row">
+          <button>Route</button>
+          <button type="button" id="speak" disabled>🔊 Speak</button>
+          <button type="button" data-nearest="quiet">Quiet room</button>
+          <button type="button" data-nearest="restroom-all-gender">All-gender restroom</button>
+          <button type="button" data-nearest="first-aid">First aid</button>
+        </div>
+      </form>
+      <p id="route-summary" class="route-summary" aria-live="polite"></p>
+      <ol id="route-steps" class="route-steps"></ol>
+    </section>
   </main>
   <footer>No audio stored · no face recognition · all inference local on a DGX Spark · <span id="ver"></span></footer>
   <script src="/app.js"></script>
+  <script src="/venue.js"></script>
 </body>
 </html>

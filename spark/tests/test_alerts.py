@@ -32,3 +32,20 @@ def test_chat_refs_persist_0600(tmp_path):
     assert refs.ref_for(12345) == r
     assert ChatRefs(p).chat_id(r.upper()) == 12345
     assert oct(p.stat().st_mode & 0o777) == "0o600"
+
+
+def test_alert_route_line_step_free(tmp_path):
+    from tower.alerts import Alerter
+    from tower.venue import Venue
+
+    refs = ChatRefs(tmp_path / "c.json")
+    ref = refs.ref_for(7)
+    a = Alerter(store=None, telegram=None, refs=refs, venue=Venue.load())
+    assert a.set_location(ref, "150-d-f")
+    line = a.route_line(ref, "salt-palace-level-2-255-ef")
+    assert line.startswith("You're at 150 D-F.") and "step-free" in line
+    assert "from=150-d-f&to=salt-palace-level-2-255-ef&step_free=1#route" in line
+    assert "escalator" not in line.lower()
+    # unknown location -> default north-foyer; unknown room -> no route line
+    assert a.route_line("nobody", "salt-palace-level-2-255-ef").startswith("You're at North Foyer")
+    assert a.route_line(ref, "main") == ""
