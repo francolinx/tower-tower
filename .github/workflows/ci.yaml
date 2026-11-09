@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff pytest pytest-asyncio
+      - run: pip install ruff pytest pytest-asyncio fastapi httpx "elasticsearch>=9,<10"
       - run: ruff check .
       - run: pytest -q
 
