@@ -18,11 +18,12 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from tower import embed
+from tower.alerts import Alerter, ChatRefs, Telegram
 from tower.chunker import Windower, merge_overlap
 from tower.store import Store, make_moment, slugify
 from tower.timeutil import to_utc_iso, utc_now_iso
@@ -39,8 +40,15 @@ MAX_SOURCES_PER_ROOM = 2
 def audio_key_ok(key: str | None) -> bool:
     return bool(AUDIO_KEY) and key is not None and hmac.compare_digest(key.encode(), AUDIO_KEY.encode())
 
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logging.Formatter.converter = time.gmtime  # log timestamps in UTC
+# httpx logs full request URLs at INFO; the Telegram URL embeds the bot token
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 log = logging.getLogger("tower-core")
 
 app = FastAPI(title="tower-core")
@@ -75,14 +83,18 @@ class Hub:
 hub = Hub()
 asr_client: httpx.AsyncClient | None = None
 store: Store | None = None
+alerter: Alerter | None = None
 
 
 @app.on_event("startup")
 async def _startup() -> None:
-    global asr_client, store
+    global asr_client, store, alerter
     asr_client = httpx.AsyncClient(base_url=ASR_URL, timeout=10.0)
     store = Store()
     await asyncio.to_thread(store.ensure_indices)
+    alerter = Alerter(store, Telegram(os.environ.get("TG_TOKEN")), ChatRefs())
+    asyncio.create_task(alerter.tg.poll(alerter.on_start))
+    log.info("telegram alerts %s", "enabled" if alerter.tg.enabled else "disabled (no TG_TOKEN)")
     await asyncio.to_thread(embed.model)  # load bge-small on CUDA before the first chunk
     log.info("store + embeddings ready")
 
@@ -94,6 +106,7 @@ class Stream:
         self.room = room
         self.started = datetime.now(UTC)
         self.talk_id = f"{room}-{self.started.strftime('%Y%m%dT%H%M%SZ')}"
+        self.room_name = room
         self.offset = 0.0  # seconds from talk start to stream start
         self.talk_ends: datetime | None = None
         self.next_check = self.started
@@ -172,6 +185,7 @@ async def index_chunk(
             timestamp=stream.wall(t_start), text=text, embedding=vec,
         )
         await asyncio.to_thread(store.index_moment, doc)
+        await alerter.check(doc, stream.room_name)
     except Exception as e:
         log.warning("index failed room=%s type=%s", stream.room, type(e).__name__)
 
@@ -220,6 +234,20 @@ async def search(body: SearchIn):
     vec = await asyncio.to_thread(embed.embed_query, q)
     hits = await asyncio.to_thread(store.search, q, vec, size)
     return {"hits": hits}
+
+
+class InterestIn(BaseModel):
+    chat_ref: str = Field(min_length=4, max_length=32)
+    query: str = Field(min_length=2, max_length=120)
+
+
+@app.post("/api/interests", status_code=201)
+async def add_interest(body: InterestIn):
+    interest_id = await asyncio.to_thread(alerter.add_interest, body.chat_ref, body.query.strip())
+    if interest_id is None:
+        raise HTTPException(status_code=404, detail="unknown Telegram code; message the bot /start")
+    log.info("interest stored id=%s query_len=%d", interest_id, len(body.query))
+    return {"id": interest_id}
 
 
 @app.get("/api/moments")

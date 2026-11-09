@@ -31,7 +31,12 @@ PORT = int(os.environ.get("ASR_PORT", "8090"))
 SAMPLE_RATE = 16000
 MAX_BYTES = SAMPLE_RATE * 2 * 30  # 30 s cap per request
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s asr %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03dZ %(levelname)s asr %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logging.Formatter.converter = time.gmtime  # log timestamps in UTC
 log = logging.getLogger("asr")
 
 t0 = time.time()
