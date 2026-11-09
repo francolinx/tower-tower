@@ -1,0 +1,16 @@
+{
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "talk_id":    { "type": "keyword" },
+      "title":      { "type": "text", "analyzer": "english", "fields": { "raw": { "type": "keyword" } } },
+      "room":       { "type": "keyword" },
+      "room_name":  { "type": "keyword" },
+      "starts_at":  { "type": "date" },
+      "ends_at":    { "type": "date" },
+      "speakers":   { "type": "keyword" },
+      "track":      { "type": "keyword" },
+      "@timestamp": { "type": "date" }
+    }
+  }
+}

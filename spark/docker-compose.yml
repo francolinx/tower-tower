@@ -1,0 +1,53 @@
+# Local inference services on the DGX Spark. All bound to 127.0.0.1.
+# tower-core itself runs on the host from ~/cnh-venv (see run.sh).
+services:
+  asr:
+    image: cnh-asr:ready
+    container_name: tower-asr
+    # host network so the service binds 127.0.0.1:8090 on the host only
+    network_mode: host
+    ipc: host
+    environment:
+      HF_HUB_OFFLINE: "1"
+      ASR_HOST: 127.0.0.1
+      ASR_PORT: "8090"
+    volumes:
+      - ${HOME}/ssd/GB10_ARSENAL/models/speech:/speech:ro
+      - ./asr:/app:ro
+    entrypoint: ["python", "/app/server.py"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Sign-photo locator (POST /api/locate). Same flags as the verified SETUP_REPORT command.
+  vlm:
+    image: vllm/vllm-openai:v0.27.1
+    container_name: tower-vlm
+    ipc: host
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - ${HOME}/models:/models:ro
+    command:
+      - --model=/models/qwen3-vl-4b
+      - --served-model-name=qwen3-vl
+      - --gpu-memory-utilization=0.20
+      - --max-model-len=8192
+      - --max-num-seqs=4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles: ["vision"]
+    restart: unless-stopped

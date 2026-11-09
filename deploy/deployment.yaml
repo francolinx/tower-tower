@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  labels:
+    app: app
+spec:
+  # Remove this line when you turn on the HPA (examples/hpa), or Argo CD and
+  # the autoscaler will keep resetting each other.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      # The gateway never talks to the Kubernetes API (Radar Checks: automountServiceAccountToken).
+      automountServiceAccountToken: false
+      containers:
+        - name: app
+          image: app
+          ports:
+            - name: http
+              containerPort: 8080
+          # Tokens (DASH0_RUM_TOKEN, OTEL_EXPORTER_OTLP_HEADERS, ...) come from Secret
+          # app-credentials, created by a human in team-tower. optional: the pod still
+          # starts (without RUM/OTel export) if the Secret isn't there yet.
+          envFrom:
+            - secretRef:
+                name: app-credentials
+                optional: true
+          env:
+            - name: TEAM_NAME
+              value: "tower"
+            - name: SPARK_URL
+              value: "https://spark-6771.tail626e79.ts.net"
+            - name: DASH0_RUM_ENDPOINT
+              value: "https://ingress.us-west-2.aws.dash0.com"
+            - name: OTEL_SERVICE_NAME
+              value: "tower-app"
+            - name: OTEL_NODE_ENABLED_INSTRUMENTATIONS
+              value: "http,express"
+            - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+              value: "false"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            # Radar Checks: readOnlyRootFs. Node only needs a writable /tmp (emptyDir below).
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

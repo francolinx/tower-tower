@@ -1,0 +1,16 @@
+{
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "talk_id":    { "type": "keyword" },
+      "room":       { "type": "keyword" },
+      "speaker":    { "type": "keyword" },
+      "lang":       { "type": "keyword" },
+      "t_start":    { "type": "float" },
+      "t_end":      { "type": "float" },
+      "@timestamp": { "type": "date" },
+      "text":       { "type": "text", "analyzer": "english" },
+      "embedding":  { "type": "dense_vector", "dims": 384, "index": true, "similarity": "cosine" }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TOWER live captions</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/config.js"></script>
+  <script type="module" src="/rum.js"></script>
+</head>
+<body>
+  <header>
+    <h1>TOWER</h1>
+    <label class="room">Room
+      <input id="room" list="rooms" value="main" autocomplete="off" spellcheck="false">
+      <datalist id="rooms"></datalist>
+    </label>
+    <span id="status" class="status" aria-live="polite">offline</span>
+  </header>
+
+  <main>
+    <section aria-label="Live captions" class="caption-wrap">
+      <div id="captions" class="captions" data-dash0-mask aria-live="polite"><span id="captext"></span></div>
+      <div class="controls">
+        <button id="smaller" aria-label="Smaller text">A−</button>
+        <button id="bigger" aria-label="Bigger text">A+</button>
+        <button id="lang" aria-pressed="false" title="Translate captions to English">Original</button>
+        <button id="mic" aria-pressed="false" class="mic">🎙 Caption this room</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <form id="search-form" role="search">
+        <label for="q">Search moments</label>
+        <div class="row"><input id="q" placeholder="the eBPF security bit" autocomplete="off"><button>Search</button></div>
+      </form>
+      <ol id="results" class="results" data-dash0-mask></ol>
+      <div id="moment" class="moment" data-dash0-mask hidden></div>
+    </section>
+
+    <section class="panel">
+      <form id="interest-form">
+        <label for="interest">Alert me about…</label>
+        <div class="row">
+          <input id="interest" placeholder="OpenTelemetry sampling" autocomplete="off">
+          <input id="chatref" placeholder="Telegram code" autocomplete="off" size="10">
+          <button>Save</button>
+        </div>
+        <p class="hint">Message <a id="botlink" href="https://t.me/" target="_blank" rel="noopener">our Telegram bot</a> <code>/start</code> to get your code.</p>
+      </form>
+      <p id="interest-status" class="hint" aria-live="polite"></p>
+    </section>
+
+    <section class="panel" id="wayfinding" aria-labelledby="wf-h">
+      <h2 id="wf-h">Find your way</h2>
+      <datalist id="venue-nodes"></datalist>
+      <form id="route-form">
+        <label for="where">Where am I</label>
+        <div class="row">
+          <input id="where" list="venue-nodes" placeholder="e.g. 150 D-F" autocomplete="off">
+          <button type="button" id="camera" aria-label="Read a room sign with the camera">📷 Sign</button>
+        </div>
+        <video id="cam" playsinline muted hidden></video>
+        <button type="button" id="snap" hidden>Read sign</button>
+        <p id="locate-status" class="hint" aria-live="polite">Locating uses room signs only, never faces or GPS.</p>
+        <label for="dest">Take me to</label>
+        <div class="row">
+          <input id="dest" list="venue-nodes" placeholder="e.g. 255 EF" autocomplete="off">
+        </div>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="stepfree"> Step-free (elevators only)</label>
+        </div>
+        <div class="row">
+          <button>Route</button>
+          <button type="button" id="speak" disabled>🔊 Speak</button>
+          <button type="button" data-nearest="quiet">Quiet room</button>
+          <button type="button" data-nearest="restroom-all-gender">All-gender restroom</button>
+          <button type="button" data-nearest="first-aid">First aid</button>
+        </div>
+      </form>
+      <p id="route-summary" class="route-summary" aria-live="polite"></p>
+      <ol id="route-steps" class="route-steps"></ol>
+    </section>
+  </main>
+  <footer>No audio stored · no face recognition · all inference local on a DGX Spark · <span id="ver"></span></footer>
+  <script src="/app.js"></script>
+  <script src="/venue.js"></script>
+</body>
+</html>
