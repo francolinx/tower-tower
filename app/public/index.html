@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TOWER live captions</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/config.js"></script>
+  <script type="module" src="/rum.js"></script>
+</head>
+<body>
+  <header>
+    <h1>TOWER</h1>
+    <label class="room">Room
+      <input id="room" list="rooms" value="main" autocomplete="off" spellcheck="false">
+      <datalist id="rooms"></datalist>
+    </label>
+    <span id="status" class="status" aria-live="polite">offline</span>
+  </header>
+
+  <main>
+    <section aria-label="Live captions" class="caption-wrap">
+      <div id="captions" class="captions" data-dash0-mask aria-live="polite"><span id="captext"></span></div>
+      <div class="controls">
+        <button id="smaller" aria-label="Smaller text">A−</button>
+        <button id="bigger" aria-label="Bigger text">A+</button>
+        <button id="lang" aria-pressed="false" title="Translate captions to English">Original</button>
+        <button id="mic" aria-pressed="false" class="mic">🎙 Caption this room</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <form id="search-form" role="search">
+        <label for="q">Search moments</label>
+        <div class="row"><input id="q" placeholder="the eBPF security bit" autocomplete="off"><button>Search</button></div>
+      </form>
+      <ol id="results" class="results" data-dash0-mask></ol>
+      <div id="moment" class="moment" data-dash0-mask hidden></div>
+    </section>
+
+    <section class="panel">
+      <form id="interest-form">
+        <label for="interest">Alert me about…</label>
+        <div class="row">
+          <input id="interest" placeholder="OpenTelemetry sampling" autocomplete="off">
+          <input id="chatref" placeholder="Telegram code" autocomplete="off" size="10">
+          <button>Save</button>
+        </div>
+        <p class="hint">Message <a id="botlink" href="https://t.me/" target="_blank" rel="noopener">our Telegram bot</a> <code>/start</code> to get your code.</p>
+      </form>
+      <p id="interest-status" class="hint" aria-live="polite"></p>
+    </section>
+  </main>
+  <footer>No audio stored · no face recognition · all inference local on a DGX Spark · <span id="ver"></span></footer>
+  <script src="/app.js"></script>
+</body>
+</html>
