@@ -22,3 +22,14 @@ def test_merge_drops_repeated_words():
 def test_merge_keeps_new_text_without_overlap():
     assert merge_overlap("hello there", "general kenobi") == "general kenobi"
     assert merge_overlap("", "first words") == "first words"
+
+
+def test_audio_key_required(monkeypatch):
+    import tower.app as core
+
+    monkeypatch.setattr(core, "AUDIO_KEY", "")
+    assert not core.audio_key_ok("anything")
+    monkeypatch.setattr(core, "AUDIO_KEY", "s3cret")
+    assert core.audio_key_ok("s3cret")
+    assert not core.audio_key_ok("wrong")
+    assert not core.audio_key_ok(None)
