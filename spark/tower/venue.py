@@ -26,6 +26,14 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.strip().lower()).strip("-")
 
 
+def level_rank(level: Any) -> float:
+    """Order levels for up/down: P/ground < 1 < 2 ... < roof (strings like "L3" don't compare)."""
+    s = norm_level(level)
+    if s.isdigit():
+        return float(s)
+    return {"p": 0.0, "g": 0.0, "ground": 0.0, "roof": 1000.0}.get(s, 500.0)
+
+
 def norm_level(level: Any) -> str:
     """2, "2", "L2", "l2" -> "2"; "Roof" -> "roof"."""
     s = str(level).strip().lower()
@@ -33,7 +41,9 @@ def norm_level(level: Any) -> str:
 
 
 class Venue:
-    def __init__(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]):
+    def __init__(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]],
+                 sign_hints: dict[str, str] | None = None):
+        self.sign_hints = {k: v for k, v in (sign_hints or {}).items() if k != "comment"}
         self.nodes: dict[str, dict[str, Any]] = {n["id"]: n for n in nodes}
         self.edges = edges
         self.adj: dict[str, list[tuple[str, int, bool]]] = {nid: [] for nid in self.nodes}
@@ -56,7 +66,28 @@ class Venue:
     def load(cls, path: str | Path | None = None) -> Venue:
         with open(path or DEFAULT_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return cls(data["nodes"], data["edges"])
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Venue:
+        """Accepts both graph shapes: per-node aliases (saltpalace) or a top-level alias map plus
+        sign_hints (theshop). Missing building/poi are filled in so every venue looks the same."""
+        building = data.get("venue", "venue")
+        nodes = [dict(n) for n in data["nodes"]]
+        by_id = {n["id"]: n for n in nodes}
+        for n in nodes:
+            n.setdefault("building", building)
+            n["aliases"] = list(n.get("aliases", []))
+            if n["kind"] in SHAFT_KINDS and "shaft" not in n:
+                parts = n["id"].split("-")
+                lvl = norm_level(n["level"])
+                n["shaft"] = "-".join(p for p in parts if norm_level(p) != lvl) if len(parts) > 2 else None
+            if n["kind"] == "poi" and not n.get("poi"):
+                n["poi"] = n["id"].rsplit("-", 1)[-1]  # shop-l3-restroom -> restroom
+        for alias, nid in (data.get("aliases") or {}).items():
+            if nid in by_id:
+                by_id[nid]["aliases"].append(alias)
+        return cls(nodes, data["edges"], data.get("sign_hints"))
 
     # ------------------------------------------------------------------ lookup
     def resolve(self, id_or_alias: str) -> str:
@@ -72,6 +103,8 @@ class Venue:
         n = self.nodes[nid]
         if n["kind"] not in SHAFT_KINDS:
             return None
+        if n.get("shaft"):
+            return n["shaft"]
         m = _SHAFT_RE.match(nid)
         return m.group("shaft") if m else nid
 
@@ -120,10 +153,12 @@ class Venue:
                 start, end = self.nodes[path[i]], self.nodes[path[j]]
                 kind = start["kind"]
                 if kind == "elevator":
-                    text = f"Take the elevator from Level {start['level']} to Level {end['level']} ({secs} s)"
+                    text = (f"Take the elevator from Level {norm_level(start['level']).upper()} to "
+                            f"Level {norm_level(end['level']).upper()} ({secs} s)")
                 else:
-                    direction = "up" if end["level"] > start["level"] else "down"
-                    text = f"Take the {kind} {direction} to Level {end['level']} ({secs} s)"
+                    direction = "up" if level_rank(end["level"]) > level_rank(start["level"]) else "down"
+                    to_level = norm_level(end["level"]).upper()
+                    text = f"Take the {kind} {direction} to Level {to_level} ({secs} s)"
                 steps.append({"text": text, "level": end["level"], "seconds": secs, "node": path[j]})
                 i = j
                 continue
