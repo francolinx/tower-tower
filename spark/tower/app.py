@@ -294,6 +294,10 @@ async def _process_window(stream, chunk_span, pcm, t_start, t_end, t_recv) -> No
         hub.last_text[room] = text
     if not new:
         return
+    rotated = await stream.maybe_rotate()
+    if rotated:
+        (text_, s0, s1), old_id, old_off = rotated
+        asyncio.create_task(index_chunk(stream, text_, s0, s1, old_id, old_off))
     latency = time.monotonic() - t_recv
     record_caption(room, latency)
     chunk_span.set_attribute("caption.latency_s", round(latency, 3))
@@ -312,10 +316,6 @@ async def _process_window(stream, chunk_span, pcm, t_start, t_end, t_recv) -> No
         },
     )
     log.info("caption room=%s t=%.1f-%.1f chars=%d latency_s=%.3f", room, t_start, t_end, len(new), latency)
-    rotated = await stream.maybe_rotate()
-    if rotated:
-        (text_, s0, s1), old_id, old_off = rotated
-        asyncio.create_task(index_chunk(stream, text_, s0, s1, old_id, old_off))
     seg = stream.add(new, t_start, t_end)
     if seg:
         asyncio.create_task(index_chunk(stream, *seg, stream.talk_id, stream.offset))
