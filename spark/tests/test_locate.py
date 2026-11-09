@@ -24,7 +24,7 @@ def test_locate_accepts_raw_image_body_and_enforces_size_limit(monkeypatch):
     async def read_sign(client, image, mime):
         received["image"] = image
         received["mime"] = mime
-        return None
+        return None, None
 
     monkeypatch.setattr(app_module.locate, "read_sign", read_sign)
     client = TestClient(app_module.app)

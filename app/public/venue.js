@@ -5,6 +5,10 @@
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
   let nodes = [], byName = new Map(), byId = new Map(), lastRoute = null;
+  // ?venue=theshop|saltpalace; alert links (?to=<talk room>) are Salt Palace; else the server default.
+  let venue = params.get('venue') || (params.get('to') ? 'saltpalace' : '');
+  const vq = () => (venue ? `venue=${encodeURIComponent(venue)}` : '');
+  const whereKey = () => `tower.where.${venue || 'default'}`;
 
   const label = (n) => `${n.name} · L${n.level}`;
   function idFromInput(el) {
@@ -22,8 +26,9 @@
 
   async function loadNodes() {
     try {
-      const r = await fetch('/api/venue/nodes');
-      nodes = (await r.json()).nodes;
+      const r = await fetch(`/api/venue/nodes?${vq()}`);
+      const j = await r.json();
+      nodes = j.nodes; venue = venue || j.venue;
     } catch { return; }
     const dl = $('venue-nodes');
     dl.innerHTML = '';
@@ -32,7 +37,7 @@
       const o = document.createElement('option'); o.value = label(n); dl.appendChild(o);
     }
     let saved = '';
-    try { saved = localStorage.getItem('tower.where') || ''; } catch {}
+    try { saved = localStorage.getItem(whereKey()) || ''; } catch {}
     const from = params.get('from') || saved || 'north-foyer';
     setInput($('where'), from);
     const to = params.get('to') || params.get('room');
@@ -44,9 +49,9 @@
   async function saveWhere() {
     const id = idFromInput($('where'));
     if (!id) return;
-    try { localStorage.setItem('tower.where', id); } catch {}
+    try { localStorage.setItem(whereKey(), id); } catch {}
     const chat_ref = ($('chatref') && $('chatref').value.trim()) || '';
-    if (chat_ref) {
+    if (chat_ref && venue === 'saltpalace') {  // alerts are about Salt Palace rooms
       fetch('/api/me/location', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ chat_ref, node: id }),
@@ -64,7 +69,7 @@
     try {
       const r = await fetch('/api/route', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ from, to, step_free: $('stepfree').checked }),
+        body: JSON.stringify({ from, to, step_free: $('stepfree').checked, venue: venue || null }),
       });
       if (!r.ok) { sum.textContent = 'No route found.'; return; }
       lastRoute = await r.json();
@@ -91,7 +96,7 @@
     b.onclick = async () => {
       const from = idFromInput($('where')) || 'north-foyer';
       try {
-        const r = await fetch(`/api/venue/nearest?kind=${encodeURIComponent(b.dataset.nearest)}&from=${encodeURIComponent(from)}&step_free=${$('stepfree').checked}`);
+        const r = await fetch(`/api/venue/nearest?kind=${encodeURIComponent(b.dataset.nearest)}&from=${encodeURIComponent(from)}&step_free=${$('stepfree').checked}&${vq()}`);
         if (!r.ok) return;
         const n = await r.json();
         setInput($('dest'), n.node);
@@ -125,7 +130,9 @@
     const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
     try {
       // raw JPEG body (not multipart) so the server never spools the photo to disk
-      const r = await fetch(`${sparkHttp}/api/locate`, {
+      const from = idFromInput($('where'));
+      const q = [vq(), from ? `from=${encodeURIComponent(from)}` : ''].filter(Boolean).join('&');
+      const r = await fetch(`${sparkHttp}/api/locate?${q}`, {
         method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: blob,
       });
       const j = await r.json();

@@ -9,17 +9,27 @@ from __future__ import annotations
 
 import heapq
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
-DEFAULT_PATH = Path(__file__).resolve().parent.parent / "venue" / "saltpalace.json"
+VENUE_DIR = Path(__file__).resolve().parent.parent / "venue"
+DEFAULT_PATH = VENUE_DIR / "saltpalace.json"
+DEFAULT_VENUE = os.environ.get("TOWER_VENUE", "theshop")  # demo venue; falls back to saltpalace
+_VENUE_NAME_RE = re.compile(r"^[a-z0-9-]{1,40}$")
 SHAFT_KINDS = ("elevator", "escalator", "stairs")
 _SHAFT_RE = re.compile(r"^(?P<shaft>.+)-l(?P<level>\d+)$")
 
 
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.strip().lower()).strip("-")
+
+
+def norm_level(level: Any) -> str:
+    """2, "2", "L2", "l2" -> "2"; "Roof" -> "roof"."""
+    s = str(level).strip().lower()
+    return s[1:] if re.fullmatch(r"l\d+", s) else s
 
 
 class Venue:
@@ -164,6 +174,24 @@ class Venue:
         return {"node": best, "name": self.nodes[best]["name"], "total_seconds": int(dist[best]),
                 "route": self._route_from(src, best, prev, dist, step_free)}
 
+    def nearest_on_level(self, poi_prefix: str, level: Any, frm: str | None = None,
+                         kinds: tuple[str, ...] = ()) -> str | None:
+        """Closest node on one level whose poi starts with poi_prefix (or whose kind is in kinds)."""
+        lvl = norm_level(level)
+        cands = [nid for nid, n in self.nodes.items() if norm_level(n["level"]) == lvl and (
+            (poi_prefix and (n.get("poi") or "").startswith(poi_prefix)) or n["kind"] in kinds)]
+        if not cands:
+            return None
+        if frm:
+            try:
+                dist, _ = self._dijkstra(self.resolve(frm), False)
+            except KeyError:
+                dist = {}
+            reachable = [c for c in cands if c in dist]
+            if reachable:
+                return min(reachable, key=lambda c: (dist[c], c))
+        return sorted(cands)[0]
+
     # ------------------------------------------------------------------ export
     def geo_docs(self) -> list[dict[str, Any]]:
         return [{"id": n["id"], "name": n["name"], "building": n["building"], "level": n["level"],
@@ -177,3 +205,37 @@ class Venue:
                 "building": n["building"], "poi": n.get("poi"), "aliases": list(n.get("aliases", []))}
                for n in self.nodes.values()]
         return sorted(out, key=lambda n: (n["building"], n["level"], n["name"].lower()))
+
+    def graph(self) -> dict[str, Any]:
+        """Whole graph for drawing a map: nodes with coordinates + undirected edges."""
+        nodes = [{"id": n["id"], "name": n["name"], "level": n["level"], "kind": n["kind"],
+                  "building": n.get("building"), "poi": n.get("poi"), "x": n["x"], "y": n["y"],
+                  "step_free_access": n["step_free_access"], "aliases": list(n.get("aliases", []))}
+                 for n in self.nodes.values()]
+        edges = [{"a": e["a"], "b": e["b"], "seconds": int(e["seconds"]), "step_free": bool(e["step_free"])}
+                 for e in self.edges]
+        return {"nodes": nodes, "edges": edges}
+
+
+class Venues:
+    """All graphs in spark/venue/*.json, loaded on first use; ?venue=<name> picks one."""
+
+    def __init__(self, directory: str | Path = VENUE_DIR, default: str = DEFAULT_VENUE):
+        self.dir = Path(directory)
+        self._cache: dict[str, Venue] = {}
+        self.default = default if (self.dir / f"{default}.json").exists() else "saltpalace"
+
+    def names(self) -> list[str]:
+        return sorted(p.stem for p in self.dir.glob("*.json"))
+
+    def get(self, name: str | None = None) -> Venue:
+        name = name or self.default
+        path = self.dir / f"{name}.json"
+        if not _VENUE_NAME_RE.match(name) or not path.exists():
+            raise KeyError("unknown venue")
+        if name not in self._cache:
+            self._cache[name] = Venue.load(path)
+        return self._cache[name]
+
+    def name_of(self, name: str | None) -> str:
+        return name or self.default
