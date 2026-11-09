@@ -84,7 +84,7 @@
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-    micCtx = new AudioContext({ sampleRate: 16000 });
+    micCtx = new AudioContext();
     await micCtx.audioWorklet.addModule('/pcm-worklet.js');
     const src = micCtx.createMediaStreamSource(micStream);
     const node = new AudioWorkletNode(micCtx, 'pcm-worklet');
@@ -140,7 +140,8 @@
     list.innerHTML = '<li>searching…</li>';
     try {
       const r = await fetch('/api/search', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ q }),
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ q }),
       });
       const { hits } = await r.json();
       list.innerHTML = hits.length ? '' : '<li>no moments yet</li>';
