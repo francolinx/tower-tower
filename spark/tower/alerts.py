@@ -130,11 +130,12 @@ class Telegram:
                 r = await self.client.get(
                     self._url("getUpdates"), params={"timeout": 30, "offset": self.offset}
                 )
-                if r.status_code != 200:  # 401 bad token, 409 another poller, 429 rate limit
+                data = r.json()
+                if r.status_code != 200 or not data.get("ok"):
                     log.warning("telegram poll status=%d", r.status_code)
-                    await asyncio.sleep(30 if r.status_code in (401, 404) else 5)
+                    await asyncio.sleep(data.get("parameters", {}).get("retry_after", 5))
                     continue
-                for u in r.json().get("result", []):
+                for u in data.get("result", []):
                     self.offset = u["update_id"] + 1
                     msg = u.get("message") or {}
                     if (msg.get("text") or "").startswith("/start") and "chat" in msg:
