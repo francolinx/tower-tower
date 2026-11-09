@@ -79,10 +79,15 @@
         </div>
       </form>
       <p id="route-summary" class="route-summary" aria-live="polite"></p>
-      <ol id="route-steps" class="route-steps"></ol>
+      <div id="level-tabs" class="level-tabs" role="tablist" aria-label="Floor"></div>
+      <div id="route-map" class="route-map"></div>
+      <details class="route-details"><summary>Steps</summary>
+        <ol id="route-steps" class="route-steps"></ol>
+      </details>
     </section>
   </main>
-  <footer>No audio stored · no face recognition · all inference local on a DGX Spark · <span id="ver"></span></footer>
+  <footer>No audio stored · no face recognition · all inference local on a DGX Spark · <span id="ver"></span>
+    <br><a href="https://my.matterport.com/show/?m=FASS2xABA63" target="_blank" rel="noopener noreferrer">3D scan of The Shop (Matterport, The Domain Companies)</a></footer>
   <script src="/app.js"></script>
   <script src="/venue.js"></script>
 </body>

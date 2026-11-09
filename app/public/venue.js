@@ -80,7 +80,86 @@
         out.appendChild(li);
       }
       $('speak').disabled = false;
+      drawMap(lastRoute);
     } catch { sum.textContent = 'Routing unavailable.'; }
+  }
+
+  // ---- inline SVG of one level, drawn from /api/venue/graph (no map images, no external tiles)
+  let graph = null, mapLevel = null;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  async function loadGraph() {
+    if (graph) return graph;
+    const r = await fetch(`/api/venue/graph?${vq()}`);
+    graph = await r.json();
+    graph.byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    graph.levels = [...new Set(graph.nodes.map((n) => String(n.level)))];
+    return graph;
+  }
+  function drawTabs(route) {
+    const tabs = $('level-tabs');
+    tabs.innerHTML = '';
+    const onRoute = new Set((route ? route.path : []).map((id) => String(graph.byId.get(id)?.level)));
+    for (const lv of graph.levels) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'tab');
+      b.textContent = (/^\d+$/.test(lv) ? 'L' + lv : lv) + (onRoute.has(lv) ? ' •' : '');
+      b.setAttribute('aria-selected', String(lv === mapLevel));
+      b.onclick = () => { mapLevel = lv; drawMap(lastRoute, true); };
+      tabs.appendChild(b);
+    }
+  }
+  async function drawMap(route, keepLevel) {
+    try { await loadGraph(); } catch { return; }
+    const path = route ? route.path : [];
+    if (!keepLevel || mapLevel === null) {
+      const start = graph.byId.get(path[0]) || graph.byId.get(idFromInput($('where')) || '');
+      mapLevel = start ? String(start.level) : graph.levels[0];
+    }
+    drawTabs(route);
+    const nodes = graph.nodes.filter((n) => String(n.level) === mapLevel);
+    if (!nodes.length) return;
+    const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y), pad = 8;
+    const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
+    const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
+    const P = (n) => [n.x - minX, maxY - n.y]; // north up
+    const svg = el('svg', { viewBox: `0 0 ${maxX - minX} ${maxY - minY}`, role: 'img',
+      'aria-label': `Map of ${mapLevel}${route ? ', route highlighted' : ''}` });
+    const ids = new Set(nodes.map((n) => n.id));
+    for (const e of graph.edges) {
+      if (!ids.has(e.a) || !ids.has(e.b)) continue;
+      const [x1, y1] = P(graph.byId.get(e.a)), [x2, y2] = P(graph.byId.get(e.b));
+      el('line', { x1, y1, x2, y2, class: 'edge' }, svg);
+    }
+    const onRoute = new Set(path);
+    for (const n of nodes) {
+      const [x, y] = P(n);
+      const label = (n.short || n.name).slice(0, 18);
+      const w = Math.max(10, label.length * 1.3), h = 5;
+      const cls = ['box', onRoute.has(n.id) ? 'on-route' : '', n.id === path[0] ? 'from' : '',
+        n.id === path[path.length - 1] ? 'to' : ''].join(' ');
+      el('rect', { x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 1, class: cls }, svg);
+      el('text', { x, y }, svg).textContent = label;
+    }
+    const pts = path.map((id) => graph.byId.get(id)).filter((n) => n && String(n.level) === mapLevel).map(P);
+    if (pts.length > 1) {
+      const d = 'M' + pts.map((p) => p.join(',')).join(' L');
+      el('path', { d, class: 'route' }, svg);
+      const dot = el('circle', { r: 1.4, class: 'dot' }, svg);
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        el('animateMotion', { dur: `${Math.max(2, pts.length * 0.8)}s`, repeatCount: 'indefinite', path: d }, dot);
+      } else {
+        dot.setAttribute('cx', pts[pts.length - 1][0]); dot.setAttribute('cy', pts[pts.length - 1][1]);
+      }
+    }
+    const box = $('route-map');
+    box.innerHTML = '';
+    box.appendChild(svg);
   }
   $('route-form').onsubmit = (e) => { e.preventDefault(); saveWhere(); route(); };
 
@@ -145,5 +224,5 @@
     } catch { $('locate-status').textContent = 'Locate unavailable — pick from the list.'; }
   };
 
-  loadNodes();
+  loadNodes().then(() => drawMap(null));
 })();

@@ -51,3 +51,21 @@ h2 { font-size: 20px; margin: 0 0 8px; color: var(--accent); }
 .route-summary { font-size: 24px; font-weight: 700; margin: 12px 0 4px; }
 .route-steps { font-size: 22px; line-height: 1.45; padding-left: 28px; }
 .route-steps li { margin: 6px 0; }
+
+/* venue map: current level drawn from /api/venue/graph */
+.level-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.level-tabs button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--accent); background: none; color: var(--fg); }
+.level-tabs button[aria-selected="true"] { background: var(--accent); color: var(--bg); }
+.route-map svg { width: 100%; height: auto; max-height: 60vh; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.route-map .edge { stroke: rgba(255,255,255,0.15); stroke-width: 0.4; }
+.route-map .box { fill: rgba(255,255,255,0.06); stroke: rgba(255,255,255,0.35); stroke-width: 0.3; }
+.route-map .box.on-route { stroke: var(--accent); stroke-width: 0.6; }
+.route-map .box.from { fill: rgba(80,200,120,0.35); }
+.route-map .box.to { fill: rgba(255,170,60,0.4); }
+.route-map text { fill: var(--fg); font-size: 2.2px; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+.route-map .route { fill: none; stroke: var(--accent); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 3 2; animation: tower-dash 1s linear infinite; }
+.route-map .dot { fill: #fff; }
+@keyframes tower-dash { to { stroke-dashoffset: -5; } }
+@media (prefers-reduced-motion: reduce) { .route-map .route { animation: none; } }
+footer a { color: var(--accent); font-size: 14px; }
