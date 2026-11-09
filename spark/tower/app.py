@@ -26,6 +26,7 @@ from tower import embed
 from tower.alerts import Alerter, ChatRefs, Telegram
 from tower.chunker import Windower, merge_overlap
 from tower.store import Store, make_moment, slugify
+from tower.telemetry import record_caption, tracer
 from tower.timeutil import to_utc_iso, utc_now_iso
 
 ASR_URL = os.environ.get("ASR_URL", "http://127.0.0.1:8090")
@@ -139,15 +140,20 @@ class Stream:
 
 
 async def index_chunk(stream: "Stream", text: str, t_start: float, t_end: float) -> None:
+    attrs = {"room": stream.room, "talk_id": stream.talk_id, "moment.chars": len(text)}
     try:
-        vec = await asyncio.to_thread(embed.embed_passage, text)
+        with tracer.start_as_current_span("embed", attributes=attrs):
+            vec = await asyncio.to_thread(embed.embed_passage, text)
         doc = make_moment(
             talk_id=stream.talk_id, room=stream.room,
             t_start=stream.offset + t_start, t_end=stream.offset + t_end,
             timestamp=stream.wall(t_start), text=text, embedding=vec,
         )
-        await asyncio.to_thread(store.index_moment, doc)
-        await alerter.check(doc, stream.room_name)
+        with tracer.start_as_current_span("index", attributes=attrs):
+            await asyncio.to_thread(store.index_moment, doc)
+        with tracer.start_as_current_span("percolate", attributes=attrs) as span:
+            sent = await alerter.check(doc, stream.room_name)
+            span.set_attribute("alerts.sent", sent)
     except Exception as e:
         log.warning("index failed room=%s type=%s", stream.room, type(e).__name__)
 
@@ -182,13 +188,19 @@ async def rooms():
     }
 
 
-@app.get("/api/search")
-async def search(q: str, size: int = 10):
-    q = q.strip()[:200]
+class SearchIn(BaseModel):
+    q: str = Field(max_length=200)
+    size: int = Field(default=10, ge=1, le=25)
+
+
+# POST, not GET: a query string would end up in HTTP span attributes and access logs.
+@app.post("/api/search")
+async def search(body: SearchIn):
+    q, size = body.q.strip(), body.size
     if not q:
         return {"hits": []}
     vec = await asyncio.to_thread(embed.embed_query, q)
-    hits = await asyncio.to_thread(store.search, q, vec, min(size, 25))
+    hits = await asyncio.to_thread(store.search, q, vec, size)
     return {"hits": hits}
 
 
@@ -223,10 +235,21 @@ async def process_window(
     stream: Stream, pcm: bytes, t_start: float, t_end: float, t_recv: float
 ) -> None:
     room = stream.room
+    with tracer.start_as_current_span(
+        "caption.chunk",
+        attributes={"room": room, "talk_id": stream.talk_id, "audio.bytes": len(pcm)},
+    ) as chunk_span:
+        await _process_window(stream, chunk_span, pcm, t_start, t_end, t_recv)
+
+
+async def _process_window(stream, chunk_span, pcm, t_start, t_end, t_recv) -> None:
+    room = stream.room
     try:
-        text = await transcribe(pcm)
+        with tracer.start_as_current_span("asr", attributes={"room": room, "model": "parakeet-tdt-0.6b-v2"}):
+            text = await transcribe(pcm)
     except httpx.HTTPError as e:
         log.warning("asr error room=%s type=%s", room, type(e).__name__)
+        chunk_span.set_attribute("error.type", type(e).__name__)
         return
     new = merge_overlap(hub.last_text.get(room, ""), text)
     if text:
@@ -234,6 +257,9 @@ async def process_window(
     if not new:
         return
     latency = time.monotonic() - t_recv
+    record_caption(room, latency)
+    chunk_span.set_attribute("caption.latency_s", round(latency, 3))
+    chunk_span.set_attribute("caption.chars", len(new))
     await hub.broadcast(
         room,
         {

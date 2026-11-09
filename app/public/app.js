@@ -139,7 +139,9 @@
     const list = $('results');
     list.innerHTML = '<li>searching…</li>';
     try {
-      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const r = await fetch('/api/search', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ q }),
+      });
       const { hits } = await r.json();
       list.innerHTML = hits.length ? '' : '<li>no moments yet</li>';
       for (const h of hits) {
