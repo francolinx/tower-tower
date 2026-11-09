@@ -40,6 +40,14 @@ def test_norm_level():
     assert norm_level("L3") == norm_level(3) == "3" and norm_level("Roof") == "roof"
 
 
+def test_explicit_shaft_precedes_id_inference():
+    v = Venue.from_dict({
+        "nodes": [node("elevator-255-l1", "L1", "elevator") | {"shaft": "south-elevator"}],
+        "edges": [],
+    })
+    assert v.shaft_of("elevator-255-l1") == "south-elevator"
+
+
 @pytest.mark.parametrize("text,want", [
     ("Welcome to the Dash0 booth", "dash0-table"),
     ("RADAR by Skyhook", "radar-table"),
@@ -206,4 +214,7 @@ def test_theshop_graph_file():
     assert match_banner("Roof elevator", v)[0] == "shop-roof-elevator"
     r = v.route("entrance", "dash0", step_free=True)
     assert all(v.nodes[n]["kind"] != "stairs" for n in r["path"])
+    assert any(step["text"].startswith("Take the elevator") for step in r["steps"])
+    r = v.route("entrance", "dash0")
+    assert any(step["text"].startswith("Take the stairs") for step in r["steps"])
     assert {n["level"] for n in v.graph()["nodes"]} == {"P", "L2", "L3", "L4", "ROOF"}

@@ -70,6 +70,10 @@ class Venue:
         for n in nodes:
             n.setdefault("building", building)
             n["aliases"] = list(n.get("aliases", []))
+            if n["kind"] in SHAFT_KINDS and "shaft" not in n:
+                parts = n["id"].split("-")
+                lvl = norm_level(n["level"])
+                n["shaft"] = "-".join(p for p in parts if norm_level(p) != lvl) if len(parts) > 2 else None
             if n["kind"] == "poi" and not n.get("poi"):
                 n["poi"] = n["id"].rsplit("-", 1)[-1]  # shop-l3-restroom -> restroom
         for alias, nid in (data.get("aliases") or {}).items():
@@ -91,6 +95,8 @@ class Venue:
         n = self.nodes[nid]
         if n["kind"] not in SHAFT_KINDS:
             return None
+        if n.get("shaft"):
+            return n["shaft"]
         m = _SHAFT_RE.match(nid)
         return m.group("shaft") if m else nid
 
