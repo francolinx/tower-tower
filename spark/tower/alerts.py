@@ -50,12 +50,11 @@ class Cooldown:
     def __init__(self, seconds: float = COOLDOWN_S, clock=time.monotonic):
         self.seconds, self.clock, self.last = seconds, clock, {}
 
-    def allow(self, key: str) -> bool:
-        now = self.clock()
-        if now - self.last.get(key, -1e18) < self.seconds:
-            return False
-        self.last[key] = now
-        return True
+    def ready(self, key: str) -> bool:
+        return self.clock() - self.last.get(key, -1e18) >= self.seconds
+
+    def mark(self, key: str) -> None:
+        self.last[key] = self.clock()
 
 
 class ChatRefs:
@@ -68,10 +67,11 @@ class ChatRefs:
             self.by_ref = json.loads(path.read_text())
 
     def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.by_ref))
-        os.chmod(tmp, 0o600)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(self.by_ref))
         tmp.replace(self.path)
 
     def ref_for(self, chat_id: int) -> str:
@@ -79,6 +79,8 @@ class ChatRefs:
             if cid == chat_id:
                 return ref
         ref = secrets.token_hex(3)  # 6 hex chars, easy to type
+        while ref in self.by_ref:
+            ref = secrets.token_hex(3)
         self.by_ref[ref] = chat_id
         self._save()
         return ref
@@ -119,7 +121,12 @@ class Telegram:
                 r = await self.client.get(
                     self._url("getUpdates"), params={"timeout": 30, "offset": self.offset}
                 )
-                for u in r.json().get("result", []):
+                data = r.json()
+                if r.status_code != 200 or not data.get("ok"):
+                    log.warning("telegram poll status=%d", r.status_code)
+                    await asyncio.sleep(data.get("parameters", {}).get("retry_after", 5))
+                    continue
+                for u in data.get("result", []):
                     self.offset = u["update_id"] + 1
                     msg = u.get("message") or {}
                     if (msg.get("text") or "").startswith("/start") and "chat" in msg:
@@ -171,13 +178,14 @@ class Alerter:
         hits = await asyncio.to_thread(self.percolate, moment)
         sent = 0
         for h in hits:
-            if not self.cooldown.allow(h["id"]):
+            if not self.cooldown.ready(h["id"]):
                 continue
             chat_id = self.refs.chat_id(h["chat_ref"])
             if chat_id is None:
                 continue
             link = moment_link(moment["room"], moment["talk_id"], moment["t_start"])
             if await self.tg.send(chat_id, alert_text(h["label"], room_name, link)):
+                self.cooldown.mark(h["id"])
                 sent += 1
         if hits:
             log.info("percolate room=%s matches=%d alerts_sent=%d", moment["room"], len(hits), sent)
