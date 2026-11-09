@@ -24,23 +24,24 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
-  llm:
+  # Sign-photo locator (POST /api/locate). Same flags as the verified SETUP_REPORT command.
+  vlm:
     image: vllm/vllm-openai:v0.27.1
-    container_name: tower-llm
+    container_name: tower-vlm
     ipc: host
     environment:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8000"
     volumes:
       - ${HOME}/models:/models:ro
     command:
-      - --model=/models/qwen3-4b-instruct-2507
-      - --served-model-name=qwen3-4b
-      - --gpu-memory-utilization=0.15
+      - --model=/models/qwen3-vl-4b
+      - --served-model-name=qwen3-vl
+      - --gpu-memory-utilization=0.20
       - --max-model-len=8192
-      - --max-num-seqs=8
+      - --max-num-seqs=4
     deploy:
       resources:
         reservations:
@@ -48,5 +49,5 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    profiles: ["llm"]
+    profiles: ["vision"]
     restart: unless-stopped

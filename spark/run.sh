@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start the Spark half in tmux session "tower".
 #   ./run.sh          ASR container + tower-core
-#   ./run.sh --llm    also start vLLM (Qwen3-4B, ~3 min to ready)
+#   ./run.sh --vision also start Qwen3-VL-4B for the sign-photo locator (~3 min to ready)
 # Secrets are read from ~/cnh-prep/.env (never from the repo).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -9,8 +9,8 @@ cd "$(dirname "$0")"
 ENV_FILE="${TOWER_ENV:-$HOME/cnh-prep/.env}"
 VENV="${TOWER_VENV:-$HOME/cnh-venv}"
 
-if [[ "${1:-}" == "--llm" ]]; then
-  docker compose --profile llm up -d asr llm
+if [[ "${1:-}" == "--vision" ]]; then
+  docker compose --profile vision up -d asr vlm
 else
   docker compose up -d asr
 fi
