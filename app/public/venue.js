@@ -1,5 +1,7 @@
-// TOWER wayfinding: "Where am I" / "Take me to" pickers, step-free routing, Speak.
+// TOWER wayfinding: "Where am I" / "Take me to" pickers, step-free routing, Speak, sign-photo locate.
 (() => {
+  const cfg = window.TOWER_CONFIG || {};
+  const sparkHttp = (cfg.sparkWs || 'wss://spark-6771.tail626e79.ts.net').replace(/^ws/, 'http');
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
   let nodes = [], byName = new Map(), byId = new Map(), lastRoute = null;
@@ -97,6 +99,44 @@
       } catch {}
     };
   });
+
+  // sign photo -> where am I (rear camera; the image is sent once and never stored)
+  let camStream = null;
+  async function openCamera() {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    const v = $('cam');
+    v.srcObject = camStream; v.hidden = false; await v.play();
+    $('snap').hidden = false; $('locate-status').textContent = 'Point at the room sign, then tap Read sign.';
+  }
+  function closeCamera() {
+    if (camStream) camStream.getTracks().forEach((t) => t.stop());
+    camStream = null; $('cam').hidden = true; $('snap').hidden = true;
+  }
+  $('camera').onclick = () => (camStream ? closeCamera() : openCamera().catch((e) => {
+    $('locate-status').textContent = 'Camera unavailable: ' + e.name + ' — pick from the list instead.';
+  }));
+  $('snap').onclick = async () => {
+    const v = $('cam'), c = document.createElement('canvas');
+    const scale = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
+    c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale);
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    closeCamera();
+    $('locate-status').textContent = 'reading sign…';
+    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
+    try {
+      // raw JPEG body (not multipart) so the server never spools the photo to disk
+      const r = await fetch(`${sparkHttp}/api/locate`, {
+        method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: blob,
+      });
+      const j = await r.json();
+      if (j.node) {
+        setInput($('where'), j.node); saveWhere();
+        $('locate-status').textContent = `You're at ${byId.get(j.node) ? byId.get(j.node).name : j.node} (${Math.round(j.confidence * 100)}% match).`;
+      } else {
+        $('locate-status').textContent = 'Couldn\'t read a room sign — pick from the list.';
+      }
+    } catch { $('locate-status').textContent = 'Locate unavailable — pick from the list.'; }
+  };
 
   loadNodes();
 })();

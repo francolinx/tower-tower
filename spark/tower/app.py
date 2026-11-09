@@ -18,11 +18,19 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from tower import embed
+from tower import embed, locate
 from tower.alerts import Alerter, ChatRefs, Telegram
 from tower.chunker import Windower, merge_overlap
 from tower.store import Store, make_moment, slugify
@@ -309,6 +317,37 @@ async def venue_nearest(kind: str, from_: str = Query(alias="from"), step_free: 
         except (KeyError, ValueError):
             raise HTTPException(status_code=404, detail="nothing of that kind reachable") from None
     return best
+
+
+@app.post("/api/locate")
+async def locate_from_sign(request: Request):
+    """Photo of a room sign -> venue node. The image lives in memory for this request only."""
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type not in ("image/jpeg", "image/png"):
+        raise HTTPException(status_code=415, detail="send a JPEG or PNG")
+    buf = bytearray()
+    async for chunk in request.stream():
+        if len(buf) + len(chunk) > locate.MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="image must be 2 MB or smaller")
+        buf.extend(chunk)
+    data = bytes(buf)
+    del buf
+    try:
+        t0 = time.monotonic()
+        with tracer.start_as_current_span("locate", attributes={"image.bytes": len(data)}) as span:
+            try:
+                sign = await locate.read_sign(asr_client, data, content_type)
+            except httpx.HTTPError as e:
+                log.warning("locate vlm error type=%s", type(e).__name__)
+                raise HTTPException(status_code=503, detail="sign reader unavailable") from None
+            node, conf = locate.match_sign(sign, venue.public_nodes()) if sign else (None, 0.0)
+            latency = time.monotonic() - t0
+            span.set_attribute("locate.latency_s", round(latency, 3))
+            span.set_attribute("locate.matched", node is not None)
+        log.info("locate bytes=%d latency_s=%.2f matched=%s", len(data), latency, node is not None)
+        return {"node": node, "name": venue.nodes[node]["name"] if node else None, "confidence": conf}
+    finally:
+        del data  # never stored
 
 
 class LocationIn(BaseModel):
