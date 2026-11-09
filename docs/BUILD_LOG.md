@@ -9,9 +9,19 @@
 | 12:43 | Caption page (≥28 px resizable, 42ch × 3 lines, ~18:1 contrast), mic mode, Express gateway, Dash0 RUM (no replay), Node OTel | #3 | **3 findings, auto-applied:** search text leaked into RUM + Node spans via URL query (→ POST + RUM URL scrubber); 16 kHz AudioContext breaks Firefox (→ resample in worklet); PR too big | — |
 | 13:45 | ES `moments` (strict, 384-d) + `talks` (78 Monday sessions, 15 real rooms, Mountain→UTC), bge-small on CUDA, RRF search, jump-to-moment | #4 | **3 findings + 1 auto-fix:** search query in uvicorn access log (→ POST, `--no-access-log`); talk resolved only at connect (→ re-resolve per chunk); ES outage → 500 (→ tolerate) | — |
 | 13:55 | Interests percolator + Telegram `/start` codes + alerts (topic + room + link, 10-min cooldown) | #5 | **5 findings, fixed:** httpx INFO logs printed the **bot token** on every poll; poll loop spun on 401/409/429; `chats.json` briefly world-readable; code collisions; failed sends used up the cooldown | — |
-| 14:00 | OTel spans (`caption.chunk` → `asr` / `embed` → `index` → `percolate`), metrics `caption.latency`, `captions.total`, `captions.within_slo`; Spark-hosted page fallback | #6 | _in review_ — self-caught before review: auto-instrumentation would have put the room key (WS URL) and the Telegram token (httpx URLs) on spans → excluded | _Dash0 MCP not yet authorised_ |
+| 14:00 | OTel spans (`caption.chunk` → `asr` / `embed` → `index` → `percolate`), metrics `caption.latency`, `captions.total`, `captions.within_slo`; Spark-hosted page fallback | #6 | **1 finding, auto-applied:** the Spark-hosted page fallback was a second feature bundled in → Gitar removed it from the PR. Self-caught before review: auto-instrumentation would have put the room key (WS URL) and the Telegram token (httpx URLs) on spans → excluded | **Dash0 (15:05):** spans `caption.chunk` → `asr`, `embed`, `index`, `percolate` arriving from `tower-core` (service.namespace `tower`); 3× WAV probe → 30 captions, p50 37.5 ms / p95 92.5 ms, SLO ratio 1.0 |
 | 14:10 | Venue graph (121 nodes / 127 edges, Salt Palace L1–L3 + Hyatt L1–L5), Dijkstra with step-free mode, ES `venue` geo_point, nearest quiet/first-aid/restroom, alerts with step-free route, wayfinding panel + Speak | #7 | _pending_ | — |
 | 14:20 | Sign-photo locator: Qwen3-VL-4B (vLLM :8001, 0.20 GPU), `POST /api/locate`. Synthetic "255 EF" sign (42 KB JPEG): **0.71 s cold, 0.52 s warm** VLM; **0.48 s** server, **0.51 s** round trip over the Funnel; matched `salt-palace-level-2-255-ef` at confidence 1.0. Image never stored | #8 | _pending_ | — |
+
+## Dash0 metric names (as stored, PromQL)
+OTel instrument → Prometheus name in Dash0 (label `room` only, no content):
+- `caption.latency` (histogram, s) → `caption_latency_seconds_bucket` / `_sum` / `_count`
+- `captions.total` (counter) → `captions_total`
+- `captions.within_slo` (counter, latency ≤ 2.0 s) → `captions_within_slo_total`
+- Also addressable as `{otel_metric_name="captions.total"}` etc.
+
+Queries: p95 per room `histogram_quantile(0.95, sum by (le, room) (rate(caption_latency_seconds_bucket[5m])))`;
+SLO `sum(increase(captions_within_slo_total[1h])) / sum(increase(captions_total[1h]))` ≥ 0.95.
 
 ## Scope changes
 - 13:50 Cut the vLLM text model (minute titles + translation flag); GPU budget moved to Qwen3-VL for the sign locator.
