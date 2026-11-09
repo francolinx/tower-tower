@@ -32,16 +32,44 @@ All inference runs locally on a DGX Spark.
  └───────────────────────────────────────────────────┘
 ```
 
+## KubeCon NA 2026 is the test venue
+
+> KubeCon captions the room you're in; Tower is for the rooms you're not in.
+
+KubeCon + CloudNativeCon North America 2026 (Salt Lake City) is where we test it:
+
+- **Schedule:** `spark/seed_schedule.py` fetches the public Sessionize feed at runtime (Monday Nov 9, Mountain → UTC)
+  into a `talks` index, so rooms and talk titles are real. The JSON is never committed.
+- **Venue graph:** `spark/venue/saltpalace.json` is 121 places and 127 walkable links across Salt Palace L1–L3 and
+  Hyatt Regency L1–L5: rooms, foyers, entrances, escalators, elevators, stairs, POIs (quiet rooms, first aid,
+  all-gender restrooms, prayer room, mothers' room) and a few sponsor booths. We hand-built it from the official venue
+  map and the event's accessibility page. Coordinates are rough (0–100), and walking times are estimates.
+- **Wayfinding:** `POST /api/route {from, to, step_free}` runs Dijkstra over the graph. Step-free mode only uses
+  elevators and step-free links. `GET /api/venue/nearest?kind=quiet&from=...` picks candidates from the ES `venue`
+  index (geo_point) and the shortest walk from the graph. Alerts add "You're at … N min, step-free: … full route".
+- **Where am I:** pick from the list, or photograph the nearest **room sign**. Qwen3-VL-4B (local, :8001) reads only
+  the sign's text and we fuzzy-match it to a venue node.
+
 ## Run it
 
 ### Spark half (`spark/`)
 
-_Filled in as the services land: `spark/docker-compose.yml` + `spark/run.sh` (tmux)._
+Prereqs on the Spark: Docker with GPU (CDI), the `cnh-asr:ready` image (NeMo + Parakeet v2 `.nemo` mounted from
+`~/ssd/GB10_ARSENAL/models/speech`), `vllm/vllm-openai:v0.27.1` with `~/models/qwen3-vl-4b`, Elasticsearch
+start-local on :9200, a Python 3.12 venv with `spark/` deps, and an env file outside the repo (see `.env.example`;
+`TOWER_AUDIO_KEY` is the room-device key).
 
 ```bash
-set -a; source ~/cnh-prep/.env; set +a      # secrets stay outside the repo
-cd spark && ruff check . && pytest -q
+cd spark
+./run.sh --vision                        # ASR (+ Qwen3-VL) in Docker, tower-core in tmux under opentelemetry-instrument
+set -a; source ~/cnh-prep/.env; set +a
+python seed_schedule.py                  # 78 Monday talks -> talks index
+tailscale funnel --bg 8088               # public https://spark-6771.tail626e79.ts.net
+python tools/send_wav.py some16k.wav --room salt-palace-level-2-255-ef   # latency probe
+ruff check . && pytest -q
 ```
+
+tower-core also serves the caption page at `/`, so the Spark URL works without the cluster.
 
 ### Cluster half (`app/`)
 
@@ -51,9 +79,18 @@ human, never committed.
 
 ## Privacy
 
-See [.gitar/documents/privacy.md](.gitar/documents/privacy.md). In short: no caption text, interest
-strings or chat IDs in logs, traces, metrics or exceptions; raw audio never persisted; inference
-services call only localhost; no face detection or recognition; all timestamps UTC ISO-8601.
+See [.gitar/documents/privacy.md](.gitar/documents/privacy.md). In short:
+
+- No caption text, interest strings or chat IDs in logs, traces, metrics or exceptions.
+- Raw audio is never persisted.
+- Inference services call only localhost.
+- No face detection or recognition.
+- All timestamps are UTC ISO-8601.
+- **Locating uses room signs, never faces or GPS.** The sign photo is held in memory for one request and dropped.
+  It is never written to disk or logged, and spans carry only its byte size and latency. The model is asked only for
+  the sign's text.
+- Telegram chat IDs live only in a local 0600 file on the Spark, keyed by an opaque code. A last-known location is
+  kept in memory only.
 
 ## How we built it
 
