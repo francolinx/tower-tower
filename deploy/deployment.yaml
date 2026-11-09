@@ -16,6 +16,8 @@ spec:
       labels:
         app: app
     spec:
+      # The gateway never talks to the Kubernetes API (Radar Checks: automountServiceAccountToken).
+      automountServiceAccountToken: false
       containers:
         - name: app
           image: app
@@ -62,7 +64,16 @@ spec:
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
+            # Radar Checks: readOnlyRootFs. Node only needs a writable /tmp (emptyDir below).
+            readOnlyRootFilesystem: true
             seccompProfile:
               type: RuntimeDefault
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
