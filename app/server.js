@@ -7,7 +7,7 @@ const express = require('express');
 const port = Number(process.env.PORT || 8080);
 const version = process.env.APP_VERSION || 'dev';
 const sparkUrl = (process.env.SPARK_URL || 'https://spark-6771.tail626e79.ts.net').replace(/\/$/, '');
-const sparkWs = sparkUrl.replace(/^http/, 'ws');
+const sparkWs = process.env.SPARK_WS_URL || sparkUrl.replace(/^http/, 'ws');
 const rumToken = process.env.DASH0_RUM_TOKEN || '';
 const rumEndpoint = process.env.DASH0_RUM_ENDPOINT || 'https://ingress.us-west-2.aws.dash0.com';
 
