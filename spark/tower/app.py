@@ -51,6 +51,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 logging.Formatter.converter = time.gmtime  # log timestamps in UTC
+# httpx logs full request URLs at INFO; the Telegram URL embeds the bot token
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 log = logging.getLogger("tower-core")
 
 app = FastAPI(title="tower-core")
