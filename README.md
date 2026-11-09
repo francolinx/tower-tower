@@ -107,6 +107,10 @@ See [.gitar/documents/privacy.md](.gitar/documents/privacy.md). In short:
 - Telegram chat IDs live only in a local 0600 file on the Spark, keyed by an opaque code. A last-known location is
   kept in memory only.
 
+## Next
+
+- Visual place recognition: 100 panorama photos of The Shop (5 levels) captured Nov 9, stored outside the repo; next step is landmark fingerprinting so a photo of any wall locates you, not just signs. The map gets better with every photo attendees contribute.
+
 ## How we built it
 
 Every feature is a small PR reviewed by Gitar (rules in `.gitar/`). Build log: [docs/BUILD_LOG.md](docs/BUILD_LOG.md).
