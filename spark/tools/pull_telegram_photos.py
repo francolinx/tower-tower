@@ -67,6 +67,16 @@ def main() -> int:
     out = Path(a.out).expanduser()
     out.mkdir(parents=True, exist_ok=True, mode=0o700)
     chats = known_chats()
+    try:
+        return pull(api, files, out, chats, a.ack)
+    except httpx.HTTPError as e:
+        # never print the exception text: its request URL contains the bot token
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        print(f"telegram request failed: {type(e).__name__} status={status}", file=sys.stderr)
+        return 3
+
+
+def pull(api: str, files: str, out: Path, chats: set[int], ack: bool) -> int:
     with httpx.Client(timeout=30) as c:
         r = telegram_get(c, f"{api}/getUpdates", allow_status=(409,),
                          params={"timeout": 0, "allowed_updates": '["message"]'})
@@ -103,8 +113,8 @@ def main() -> int:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
             saved += 1
-            print(f"saved photo ({len(data) // 1024} KB)")
-        if a.ack and updates:
+            print(f"saved photo {saved} ({len(data) // 1024} KB)")
+        if ack and updates:
             acknowledged = telegram_get(
                 c, f"{api}/getUpdates",
                 params={"offset": updates[-1]["update_id"] + 1, "timeout": 0},
