@@ -21,8 +21,9 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
+# --no-access-log: request URLs can carry room keys; we log our own content-free lines.
 CORE_CMD="set -a; source '$ENV_FILE'; set +a; source '$VENV/bin/activate'; \
-uvicorn tower.app:app --host 127.0.0.1 --port 8088"
+uvicorn tower.app:app --host 127.0.0.1 --port 8088 --no-access-log"
 
 tmux has-session -t tower 2>/dev/null || tmux new-session -d -s tower -n shell
 tmux kill-window -t tower:core 2>/dev/null || true
