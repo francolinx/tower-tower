@@ -16,7 +16,7 @@
 | 15:20 | End-to-end over the public Funnel (audio in via `wss://…/ws/audio`, viewer on `wss://…/ws/captions`, same path the team page uses): server latency p50 **35 ms** / p95 **50 ms**; wall clock from end of audio window to caption at the viewer ≈ **50 ms** | — | — | — |
 | 15:35 | Qwen3-VL now runs from `./run.sh --vision` (compose `tower-vlm`), hand-started `vlm` container removed. Gotcha: the earlier failed `--vision` run (port 8001 taken) left `tower-vlm` created without its port; compose reused it → `--force-recreate` once. Locate over the Funnel after the switch: 0.72 s cold / 0.52 s warm, 255 EF @ 1.0 | — | — | — |
 | 15:35 | Gateway telemetry: `tower-app` (Node, http + express) spans arriving in Dash0 — 698 requests / 30 min, p95 4.4 ms, 0 % errors; spans carry `http.route` only (no URL, no query) | — | — | **Dash0:** service catalog shows `tower-app` + `tower-core` |
-| 15:40 | Radar Checks fixes: `automountServiceAccountToken: false`, `readOnlyRootFilesystem: true` + `emptyDir` `/tmp` (verified locally with `docker run --read-only`) | #11 | _in review_ | Radar Checks "after": _pending deploy_ |
+| 15:40 | Radar Checks fixes: `automountServiceAccountToken: false`, `readOnlyRootFilesystem: true` + `emptyDir` `/tmp` (verified locally with `docker run --read-only`) | #11 | Approved, no findings | **Radar Checks after** (`a9d7d25`): **4 → 2** findings, both Security findings cleared; missingPDB + missingTopologySpread remain ([after](radar-checks-after.md)) |
 
 ## Dash0 metric names (as stored, PromQL)
 OTel instrument → Prometheus name in Dash0 (label `room` only, no content):
