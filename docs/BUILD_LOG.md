@@ -17,6 +17,12 @@
 | 15:35 | Qwen3-VL now runs from `./run.sh --vision` (compose `tower-vlm`), hand-started `vlm` container removed. Gotcha: the earlier failed `--vision` run (port 8001 taken) left `tower-vlm` created without its port; compose reused it → `--force-recreate` once. Locate over the Funnel after the switch: 0.72 s cold / 0.52 s warm, 255 EF @ 1.0 | — | — | — |
 | 15:35 | Gateway telemetry: `tower-app` (Node, http + express) spans arriving in Dash0 — 698 requests / 30 min, p95 4.4 ms, 0 % errors; spans carry `http.route` only (no URL, no query) | — | — | **Dash0:** service catalog shows `tower-app` + `tower-core` |
 | 15:40 | Radar Checks fixes: `automountServiceAccountToken: false`, `readOnlyRootFilesystem: true` + `emptyDir` `/tmp` (verified locally with `docker run --read-only`) | #11 | Approved, no findings | **Radar Checks after** (`a9d7d25`): **4 → 2** findings, both Security findings cleared; missingPDB + missingTopologySpread remain ([after](radar-checks-after.md)) |
+| 16:05 | Slides search merged: 95 talks / 2486 slide pages indexed in 8.6 s; search returns slide pages (PDF opened at the page) next to moments | #9 | Approved, no findings | — |
+| 16:15 | Switchable venue (`/api/venue/graph?venue=`), banner/restroom/floor locator rules, Telegram photo puller | #12 | **Blocked, 4 findings → fixed:** the `venue` query param shadowed the Salt Palace graph (→ `/nearest` 500); puller tracebacks would print the bot-token URL; caption text on stdout; bundling (kept, explained) | — |
+| 16:28 | The Shop graph (demo default, 41 nodes / 55 edges, P–L4 + roof); loader normalises its alias-map + `sign_hints` shape; Matterport-based coordinates | #13 | **Changes requested, auto-applied:** Shop elevator/stair ids weren't recognised as shafts, so rides read as walks → fixed; we also ranked levels (P < L2 … < ROOF) for up/down | — |
+| 16:34 | Inline SVG level map (rooms as boxes, animated route + moving dot, level tabs) + Matterport 3D-scan link; verified live: stage → roof NW step-free, 3 min | #14 | Approved | — |
+| 16:40 | Level label fix (LL3 → L3); README final (diagram no longer shows the cut text model) | #16, #15 | — | — |
+| — | Photo test on real venue photos: **not run** — no photos reached the bot before the freeze (puller + rules unit-tested; synthetic "255 EF" sign still 0.52 s warm, confidence 1.0) | — | — | — |
 
 ## Dash0 metric names (as stored, PromQL)
 OTel instrument → Prometheus name in Dash0 (label `room` only, no content):
@@ -29,6 +35,7 @@ Queries: p95 per room `histogram_quantile(0.95, sum by (le, room) (rate(caption_
 SLO `sum(increase(captions_within_slo_total[1h])) / sum(increase(captions_total[1h]))` ≥ 0.95.
 
 ## Scope changes
+- 16:32 Full `/map` page (#12b) not built; shipped the inline SVG level map on the existing page instead (#14).
 - 13:50 Cut the vLLM text model (minute titles + translation flag); GPU budget moved to Qwen3-VL for the sign locator.
 
 ## Blockers hit
