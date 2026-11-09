@@ -1,0 +1,14 @@
+{
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "query":      { "type": "percolator" },
+      "chat_ref":   { "type": "keyword" },
+      "label":      { "type": "keyword" },
+      "@timestamp": { "type": "date" },
+      "text":       { "type": "text", "analyzer": "english" },
+      "room":       { "type": "keyword" },
+      "talk_id":    { "type": "keyword" }
+    }
+  }
+}
