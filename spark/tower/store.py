@@ -8,7 +8,9 @@ import os
 import re
 from pathlib import Path
 
-from elasticsearch import Elasticsearch, NotFoundError
+from elasticsearch import ApiError, Elasticsearch, NotFoundError, TransportError
+
+ES_DOWN = (ApiError, TransportError)
 
 MAPPINGS_DIR = Path(__file__).resolve().parent.parent / "es" / "mappings"
 MOMENTS = "moments"
@@ -129,7 +131,7 @@ class Store:
                 ]}},
                 size=1,
             )
-        except NotFoundError:
+        except (NotFoundError, *ES_DOWN):
             return None
         hits = r["hits"]["hits"]
         return hits[0]["_source"] if hits else None
@@ -144,6 +146,6 @@ class Store:
                 ]}},
                 size=100,
             )
-        except NotFoundError:
+        except (NotFoundError, *ES_DOWN):
             return {}
         return {h["_source"]["room"]: h["_source"] for h in r["hits"]["hits"]}
