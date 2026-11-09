@@ -1,11 +1,12 @@
 """Stream a 16 kHz mono WAV to tower-core in real time and print caption latency.
 
-    python tools/send_wav.py ~/cnh-prep/asr_test_16k.wav --room test [--url ws://127.0.0.1:8088]
+    TOWER_AUDIO_KEY=... python tools/send_wav.py ~/cnh-prep/asr_test_16k.wav --room test
 """
 
 import argparse
 import asyncio
 import json
+import os
 import statistics
 import time
 
@@ -14,6 +15,7 @@ import websockets
 
 
 async def main(path: str, room: str, url: str, frame_ms: int) -> None:
+    key = os.environ.get("TOWER_AUDIO_KEY", "")
     audio, sr = sf.read(path, dtype="int16")
     assert sr == 16000 and audio.ndim == 1, "need 16 kHz mono"
     latencies: list[float] = []
@@ -28,7 +30,7 @@ async def main(path: str, room: str, url: str, frame_ms: int) -> None:
     listener = asyncio.create_task(listen())
     await asyncio.sleep(0.3)
     step = sr * frame_ms // 1000
-    async with websockets.connect(f"{url}/ws/audio?room={room}") as ws:
+    async with websockets.connect(f"{url}/ws/audio?room={room}&key={key}") as ws:
         t0 = time.monotonic()
         for i in range(0, len(audio), step):
             await ws.send(audio[i : i + step].tobytes())
