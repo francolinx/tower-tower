@@ -95,3 +95,21 @@ def test_photo_puller_helpers():
              {"file_id": "b", "width": 1280, "height": 960, "file_size": 200_000},
              {"file_id": "c", "width": 4000, "height": 3000, "file_size": 3_000_000}]
     assert m.best_photo(sizes)["file_id"] == "b"
+
+
+def test_nearest_saltpalace_route_uses_graph_not_query_string(monkeypatch):
+    """Regression (Gitar #12): the ?venue= param shadowed the Venue object and crashed /nearest."""
+    from fastapi.testclient import TestClient
+
+    import tower.app as app_module
+
+    class NoGeo:
+        def venue_candidates(self, *a):
+            return []
+
+    monkeypatch.setattr(app_module, "store", NoGeo())
+    client = TestClient(app_module.app)
+    params = {"kind": "quiet", "from": "north-foyer", "venue": "saltpalace"}
+    r = client.get("/api/venue/nearest", params=params)
+    assert r.status_code == 200 and r.json()["node"]
+    assert client.get("/api/venue/graph", params={"venue": "nope"}).status_code == 404
