@@ -9,6 +9,7 @@ Privacy: logs carry room, counts and durations only. Audio is never written to d
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -23,6 +24,14 @@ from tower.chunker import Windower, merge_overlap
 from tower.timeutil import utc_now_iso
 
 ASR_URL = os.environ.get("ASR_URL", "http://127.0.0.1:8090")
+# Shared secret a room device must present to stream audio (?key=...). Caption reads stay public:
+# captions are shown to the room's audience anyway. No key configured -> audio is refused.
+AUDIO_KEY = os.environ.get("TOWER_AUDIO_KEY", "")
+MAX_SOURCES_PER_ROOM = 2
+
+
+def audio_key_ok(key: str | None) -> bool:
+    return bool(AUDIO_KEY) and key is not None and hmac.compare_digest(key.encode(), AUDIO_KEY.encode())
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("tower-core")
@@ -122,7 +131,15 @@ async def process_window(room: str, pcm: bytes, t_start: float, t_end: float, t_
 
 
 @app.websocket("/ws/audio")
-async def ws_audio(ws: WebSocket, room: str):
+async def ws_audio(ws: WebSocket, room: str, key: str | None = None):
+    if not audio_key_ok(key):
+        log.warning("audio source rejected room=%s reason=key", room)
+        await ws.close(code=4401)
+        return
+    if hub.sources[room] >= MAX_SOURCES_PER_ROOM:
+        log.warning("audio source rejected room=%s reason=busy", room)
+        await ws.close(code=4429)
+        return
     await ws.accept()
     hub.sources[room] += 1
     windower = Windower(1.5, 0.5)
