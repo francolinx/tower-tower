@@ -40,6 +40,14 @@ def test_norm_level():
     assert norm_level("L3") == norm_level(3) == "3" and norm_level("Roof") == "roof"
 
 
+def test_explicit_shaft_precedes_id_inference():
+    v = Venue.from_dict({
+        "nodes": [node("elevator-255-l1", "L1", "elevator") | {"shaft": "south-elevator"}],
+        "edges": [],
+    })
+    assert v.shaft_of("elevator-255-l1") == "south-elevator"
+
+
 @pytest.mark.parametrize("text,want", [
     ("Welcome to the Dash0 booth", "dash0-table"),
     ("RADAR by Skyhook", "radar-table"),
@@ -206,4 +214,25 @@ def test_theshop_graph_file():
     assert match_banner("Roof elevator", v)[0] == "shop-roof-elevator"
     r = v.route("entrance", "dash0", step_free=True)
     assert all(v.nodes[n]["kind"] != "stairs" for n in r["path"])
+    assert any(step["text"].startswith("Take the elevator") for step in r["steps"])
+    r = v.route("entrance", "dash0")
+    assert any(step["text"].startswith("Take the stairs") for step in r["steps"])
     assert {n["level"] for n in v.graph()["nodes"]} == {"P", "L2", "L3", "L4", "ROOF"}
+
+
+def test_theshop_rides_are_shaft_steps():
+    """Gitar #13: shop-l3-elevator etc. must collapse into one ride step, with correct up/down."""
+    v = Venues().get("theshop")
+    steps = [s["text"] for s in v.route("entrance", "dash0", step_free=True)["steps"]]
+    assert any(t.startswith("Take the elevator from Level P to Level 3") for t in steps), steps
+    assert not any("Walk to Elevator (floor" in t or "Walk from Elevator" in t for t in steps), steps
+    down = [s["text"] for s in v.route("shop-roof-door", "shop-p-lobby")["steps"]]
+    assert any(t.startswith("Take the stairs down to Level P") for t in down), down
+
+
+def test_level_rank_orders_shop_levels():
+    from tower.venue import level_rank
+    assert sorted(["ROOF", "L4", "P", "L2", "L3"], key=level_rank) == ["P", "L2", "L3", "L4", "ROOF"]
+    v = Venues().get("theshop")
+    up = [s["text"] for s in v.route("shop-p-lobby", "shop-roof-door")["steps"]]
+    assert any(t.startswith("Take the stairs up to Level ROOF") for t in up), up
