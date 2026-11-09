@@ -26,6 +26,14 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.strip().lower()).strip("-")
 
 
+def level_rank(level: Any) -> float:
+    """Order levels for up/down: P/ground < 1 < 2 ... < roof (strings like "L3" don't compare)."""
+    s = norm_level(level)
+    if s.isdigit():
+        return float(s)
+    return {"p": 0.0, "g": 0.0, "ground": 0.0, "roof": 1000.0}.get(s, 500.0)
+
+
 def norm_level(level: Any) -> str:
     """2, "2", "L2", "l2" -> "2"; "Roof" -> "roof"."""
     s = str(level).strip().lower()
@@ -145,10 +153,12 @@ class Venue:
                 start, end = self.nodes[path[i]], self.nodes[path[j]]
                 kind = start["kind"]
                 if kind == "elevator":
-                    text = f"Take the elevator from Level {start['level']} to Level {end['level']} ({secs} s)"
+                    text = (f"Take the elevator from Level {norm_level(start['level']).upper()} to "
+                            f"Level {norm_level(end['level']).upper()} ({secs} s)")
                 else:
-                    direction = "up" if end["level"] > start["level"] else "down"
-                    text = f"Take the {kind} {direction} to Level {end['level']} ({secs} s)"
+                    direction = "up" if level_rank(end["level"]) > level_rank(start["level"]) else "down"
+                    to_level = norm_level(end["level"]).upper()
+                    text = f"Take the {kind} {direction} to Level {to_level} ({secs} s)"
                 steps.append({"text": text, "level": end["level"], "seconds": secs, "node": path[j]})
                 i = j
                 continue

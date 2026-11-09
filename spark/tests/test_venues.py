@@ -218,3 +218,21 @@ def test_theshop_graph_file():
     r = v.route("entrance", "dash0")
     assert any(step["text"].startswith("Take the stairs") for step in r["steps"])
     assert {n["level"] for n in v.graph()["nodes"]} == {"P", "L2", "L3", "L4", "ROOF"}
+
+
+def test_theshop_rides_are_shaft_steps():
+    """Gitar #13: shop-l3-elevator etc. must collapse into one ride step, with correct up/down."""
+    v = Venues().get("theshop")
+    steps = [s["text"] for s in v.route("entrance", "dash0", step_free=True)["steps"]]
+    assert any(t.startswith("Take the elevator from Level P to Level 3") for t in steps), steps
+    assert not any("Walk to Elevator (floor" in t or "Walk from Elevator" in t for t in steps), steps
+    down = [s["text"] for s in v.route("shop-roof-door", "shop-p-lobby")["steps"]]
+    assert any(t.startswith("Take the stairs down to Level P") for t in down), down
+
+
+def test_level_rank_orders_shop_levels():
+    from tower.venue import level_rank
+    assert sorted(["ROOF", "L4", "P", "L2", "L3"], key=level_rank) == ["P", "L2", "L3", "L4", "ROOF"]
+    v = Venues().get("theshop")
+    up = [s["text"] for s in v.route("shop-p-lobby", "shop-roof-door")["steps"]]
+    assert any(t.startswith("Take the stairs up to Level ROOF") for t in up), up
