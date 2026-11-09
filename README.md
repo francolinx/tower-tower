@@ -19,9 +19,10 @@ All inference runs locally on a DGX Spark.
  │   chunk ─► ASR ─► embed ─► index ─► percolate ─► broadcast caption       │
  │            │        │        │          │                                │
  │   Parakeet v2   bge-small  Elasticsearch  interests ─► Telegram alert    │
- │   :8090 (whisper.cpp  CUDA   moments/talks  percolator  (topic+room+link)│
- │   for lang=auto)            :9200                                        │
- │   vLLM Qwen3-4B :8000 (minute titles, translation flag)                  │
+ │   :8090       CUDA   moments/talks/slides percolator (topic+room+link)│
+ │                             :9200                                        │
+ │   Qwen3-VL-4B (vLLM :8001): reads room signs + banners -> venue node     │
+ │   venue graphs (theshop, saltpalace) -> step-free routes, SVG level map  │
  │   OpenTelemetry ─────────────────────────────────────────► Dash0         │
  └──────────────────────────────────────────────────────────────────────────┘
         ▲ /api/* proxy
@@ -50,6 +51,16 @@ KubeCon + CloudNativeCon North America 2026 (Salt Lake City) is where we test it
   prefills "Take me to" with that room and reads your saved "Where am I" from the browser.
 - **Where am I:** pick from the list, or photograph the nearest **room sign**. Qwen3-VL-4B (local, :8001) reads only
   the sign's text and we fuzzy-match it to a venue node.
+
+## The Shop is the demo venue
+
+The live demo runs at The Shop Workspace (Salt Lake City), where the hackathon is: `spark/venue/theshop.json`
+(levels P, L2, L3, L4, roof; sponsor tables on L3). `GET /api/venue/graph?venue=theshop|saltpalace` returns either
+graph in the same shape; the page draws the current level as an inline SVG with the route animated on it and level
+tabs. Point the camera at a banner or sign: "Dash0", "Radar", "Sonar"/"Gitar", "Elastic" find that table,
+"Restroom"/🚻 finds the nearest one on your level, "Floor 3" or an elevator panel finds that level's elevator.
+
+Search also covers the speakers' published slide decks, page by page (`spark/seed_slides.py`), next to live moments.
 
 ## Run it
 
