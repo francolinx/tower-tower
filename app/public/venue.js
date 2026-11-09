@@ -10,7 +10,7 @@
   const vq = () => (venue ? `venue=${encodeURIComponent(venue)}` : '');
   const whereKey = () => `tower.where.${venue || 'default'}`;
 
-  const label = (n) => `${n.name} · L${n.level}`;
+  const label = (n) => `${n.name} · ${/^\d+$/.test(String(n.level)) ? 'L' + n.level : n.level}`; // 3 -> L3; L3, ROOF as-is
   function idFromInput(el) {
     const v = el.value.trim();
     if (!v) return null;
