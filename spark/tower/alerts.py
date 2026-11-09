@@ -225,11 +225,7 @@ class Alerter:
             if chat_id is None:
                 continue
             link = moment_link(moment["room"], moment["talk_id"], moment["t_start"])
-            text = alert_text(h["label"], room_name, link)
-            extra = self.route_line(h["chat_ref"], moment["room"])
-            if extra:
-                text = f"{text}\n{extra}"
-            if await self.tg.send(chat_id, text):
+            if await self.tg.send(chat_id, alert_text(h["label"], room_name, link)):
                 self.cooldown.mark(h["id"])  # only a delivered alert starts the 10-minute cooldown
                 sent += 1
         if hits:
