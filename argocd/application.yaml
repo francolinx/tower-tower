@@ -5,16 +5,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: app
-  namespace: team-__TEAM__
+  namespace: team-tower
 spec:
-  project: team-__TEAM__
+  project: team-tower
   source:
-    repoURL: https://github.com/OWNER/REPO.git
+    repoURL: https://github.com/francolinx/tower-tower.git
     targetRevision: main
     path: deploy
   destination:
     server: https://kubernetes.default.svc
-    namespace: team-__TEAM__
+    namespace: team-tower
   syncPolicy:
     automated:
       prune: true
