@@ -227,7 +227,8 @@ class Venue:
 
     def graph(self) -> dict[str, Any]:
         """Whole graph for drawing a map: nodes with coordinates + undirected edges."""
-        nodes = [{"id": n["id"], "name": n["name"], "level": n["level"], "kind": n["kind"],
+        nodes = [{"id": n["id"], "name": n["name"], "short": n.get("short"), "level": n["level"],
+                  "kind": n["kind"],
                   "building": n.get("building"), "poi": n.get("poi"), "x": n["x"], "y": n["y"],
                   "step_free_access": n["step_free_access"], "aliases": list(n.get("aliases", []))}
                  for n in self.nodes.values()]
