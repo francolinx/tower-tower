@@ -34,6 +34,7 @@ from tower.timeutil import to_utc_iso, utc_now_iso
 
 ASR_URL = os.environ.get("ASR_URL", "http://127.0.0.1:8090")
 MIN_SEG_S, MAX_SEG_S = 3.0, 7.0  # moment length bounds
+RESOLVE_EVERY_S = 60  # re-check which scheduled talk is in the room
 # Shared secret a room device must present to stream audio (?key=...). Caption reads stay public:
 # captions are shown to the room's audience anyway. No key configured -> audio is refused.
 AUDIO_KEY = os.environ.get("TOWER_AUDIO_KEY", "")
@@ -108,6 +109,8 @@ class Stream:
         self.talk_id = f"{room}-{self.started.strftime('%Y%m%dT%H%M%SZ')}"
         self.room_name = room
         self.offset = 0.0  # seconds from talk start to stream start
+        self.talk_ends: datetime | None = None
+        self.next_check = self.started
         self.seg_text: list[str] = []
         self.seg_start: float | None = None
         self.seg_end = 0.0
@@ -130,26 +133,58 @@ class Stream:
         self.seg_text, self.seg_start = [], None
         return seg
 
-    async def resolve_talk(self) -> None:
-        talk = await asyncio.to_thread(store.current_talk, self.room, to_utc_iso(self.started))
+    async def resolve_talk(self) -> bool:
+        """Point this stream at the scheduled talk in its room now. Returns True if it changed.
+
+        Re-run per chunk via maybe_rotate, so a device that stays connected across back-to-back
+        sessions files each moment under the right talk. t = seconds from that talk's start.
+        """
+        now = datetime.now(UTC)
+        self.next_check = now + timedelta(seconds=RESOLVE_EVERY_S)
+        talk = await asyncio.to_thread(store.current_talk, self.room, to_utc_iso(now))
         if talk:
+            if talk["talk_id"] == self.talk_id:
+                return False
+            starts = datetime.fromisoformat(talk["starts_at"].replace("Z", "+00:00"))
             self.talk_id = talk["talk_id"]
             self.room_name = talk.get("room_name") or self.room
-            starts = datetime.fromisoformat(talk["starts_at"].replace("Z", "+00:00"))
-            self.offset = max(0.0, (self.started - starts).total_seconds())
+            self.offset = (self.started - starts).total_seconds()
+            self.talk_ends = datetime.fromisoformat(talk["ends_at"].replace("Z", "+00:00"))
+            return True
+        if self.talk_ends is not None and now >= self.talk_ends:
+            # scheduled talk is over and nothing follows: start an unscheduled block
+            self.talk_id = f"{self.room}-{now.strftime('%Y%m%dT%H%M%SZ')}"
+            self.room_name = self.room
+            self.offset = (self.started - now).total_seconds()
+            self.talk_ends = None
+            return True
+        return False
+
+    async def maybe_rotate(self):
+        """If a re-check is due and the talk changed, return the open segment under the old talk."""
+        now = datetime.now(UTC)
+        if now < self.next_check and (self.talk_ends is None or now < self.talk_ends):
+            return None
+        old_id, old_offset = self.talk_id, self.offset
+        seg = None
+        if await self.resolve_talk():
+            seg = self.flush()
+        return (seg, old_id, old_offset) if seg else None
 
     def wall(self, t: float) -> str:
         return to_utc_iso(self.started + timedelta(seconds=t))
 
 
-async def index_chunk(stream: "Stream", text: str, t_start: float, t_end: float) -> None:
-    attrs = {"room": stream.room, "talk_id": stream.talk_id, "moment.chars": len(text)}
+async def index_chunk(
+    stream: "Stream", text: str, t_start: float, t_end: float, talk_id: str, offset: float
+) -> None:
+    attrs = {"room": stream.room, "talk_id": talk_id, "moment.chars": len(text)}
     try:
         with tracer.start_as_current_span("embed", attributes=attrs):
             vec = await asyncio.to_thread(embed.embed_passage, text)
         doc = make_moment(
-            talk_id=stream.talk_id, room=stream.room,
-            t_start=stream.offset + t_start, t_end=stream.offset + t_end,
+            talk_id=talk_id, room=stream.room,
+            t_start=offset + t_start, t_end=offset + t_end,
             timestamp=stream.wall(t_start), text=text, embedding=vec,
         )
         with tracer.start_as_current_span("index", attributes=attrs):
@@ -277,9 +312,13 @@ async def _process_window(stream, chunk_span, pcm, t_start, t_end, t_recv) -> No
         },
     )
     log.info("caption room=%s t=%.1f-%.1f chars=%d latency_s=%.3f", room, t_start, t_end, len(new), latency)
+    rotated = await stream.maybe_rotate()
+    if rotated:
+        (text_, s0, s1), old_id, old_off = rotated
+        asyncio.create_task(index_chunk(stream, text_, s0, s1, old_id, old_off))
     seg = stream.add(new, t_start, t_end)
     if seg:
-        asyncio.create_task(index_chunk(stream, *seg))
+        asyncio.create_task(index_chunk(stream, *seg, stream.talk_id, stream.offset))
 
 
 @app.websocket("/ws/audio")
@@ -326,7 +365,7 @@ async def ws_audio(ws: WebSocket, room: str, key: str | None = None):
         await task
         seg = stream.flush()
         if seg:
-            await index_chunk(stream, *seg)
+            await index_chunk(stream, *seg, stream.talk_id, stream.offset)
         log.info("audio source disconnected room=%s", room)
 
 
