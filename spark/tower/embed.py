@@ -23,5 +23,9 @@ def embed_passage(text: str) -> list[float]:
     return model().encode(text, normalize_embeddings=True).tolist()
 
 
+def embed_passages(texts: list[str]) -> list[list[float]]:
+    return model().encode(texts, normalize_embeddings=True, batch_size=64).tolist()
+
+
 def embed_query(q: str) -> list[float]:
     return model().encode(BGE_QUERY_PREFIX + q, normalize_embeddings=True).tolist()
