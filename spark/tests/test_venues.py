@@ -193,3 +193,17 @@ def test_nearest_saltpalace_route_uses_graph_not_query_string(monkeypatch):
     r = client.get("/api/venue/nearest", params=params)
     assert r.status_code == 200 and r.json()["node"]
     assert client.get("/api/venue/graph", params={"venue": "nope"}).status_code == 404
+
+
+def test_theshop_graph_file():
+    """The demo venue file: top-level aliases + sign_hints shape, normalised by the loader."""
+    v = Venues().get("theshop")
+    assert match_banner("DASH0", v)[0] == "shop-l3-dash0-table"
+    assert match_banner("Gitar", v)[0] == "shop-l3-sonar-table"
+    assert match_banner("Help Yourself", v)[0] == "shop-l3-fridge"  # from the file's sign_hints
+    assert match_banner("🚻", v, frm="shop-l3-stage")[0] == "shop-l3-restroom"
+    assert match_banner("Floor 4", v)[0] == "shop-l4-elevator"
+    assert match_banner("Roof elevator", v)[0] == "shop-roof-elevator"
+    r = v.route("entrance", "dash0", step_free=True)
+    assert all(v.nodes[n]["kind"] != "stairs" for n in r["path"])
+    assert {n["level"] for n in v.graph()["nodes"]} == {"P", "L2", "L3", "L4", "ROOF"}

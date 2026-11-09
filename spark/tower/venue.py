@@ -33,7 +33,9 @@ def norm_level(level: Any) -> str:
 
 
 class Venue:
-    def __init__(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]):
+    def __init__(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]],
+                 sign_hints: dict[str, str] | None = None):
+        self.sign_hints = {k: v for k, v in (sign_hints or {}).items() if k != "comment"}
         self.nodes: dict[str, dict[str, Any]] = {n["id"]: n for n in nodes}
         self.edges = edges
         self.adj: dict[str, list[tuple[str, int, bool]]] = {nid: [] for nid in self.nodes}
@@ -56,7 +58,24 @@ class Venue:
     def load(cls, path: str | Path | None = None) -> Venue:
         with open(path or DEFAULT_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return cls(data["nodes"], data["edges"])
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Venue:
+        """Accepts both graph shapes: per-node aliases (saltpalace) or a top-level alias map plus
+        sign_hints (theshop). Missing building/poi are filled in so every venue looks the same."""
+        building = data.get("venue", "venue")
+        nodes = [dict(n) for n in data["nodes"]]
+        by_id = {n["id"]: n for n in nodes}
+        for n in nodes:
+            n.setdefault("building", building)
+            n["aliases"] = list(n.get("aliases", []))
+            if n["kind"] == "poi" and not n.get("poi"):
+                n["poi"] = n["id"].rsplit("-", 1)[-1]  # shop-l3-restroom -> restroom
+        for alias, nid in (data.get("aliases") or {}).items():
+            if nid in by_id:
+                by_id[nid]["aliases"].append(alias)
+        return cls(nodes, data["edges"], data.get("sign_hints"))
 
     # ------------------------------------------------------------------ lookup
     def resolve(self, id_or_alias: str) -> str:

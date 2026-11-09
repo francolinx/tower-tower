@@ -23,12 +23,31 @@ PROMPT = (
     "Read only printed signs and banners. Ignore people."
 )
 # Banner text -> venue node (sponsor tables at the demo venue). Earliest mention in the text wins.
+# Targets are tried as node ids, then as venue aliases (theshop: "dash0" -> shop-l3-dash0-table).
 BANNERS = (
-    (re.compile(r"dash\s?0", re.I), "dash0-table"),
-    (re.compile(r"\bradar\b", re.I), "radar-table"),
-    (re.compile(r"\b(sonar|gitar)\b", re.I), "sonar-table"),
-    (re.compile(r"\belastic", re.I), "elastic-table"),
+    (re.compile(r"dash\s?0", re.I), ("dash0-table", "dash0")),
+    (re.compile(r"\bradar\b", re.I), ("radar-table", "radar")),
+    (re.compile(r"\b(sonar|gitar)\b", re.I), ("sonar-table", "sonar")),
+    (re.compile(r"\belastic", re.I), ("elastic-table", "elastic")),
 )
+
+
+def _resolve_any(venue, names) -> str | None:
+    for name in names:
+        if name in venue.nodes:
+            return name
+        try:
+            return venue.resolve(name)
+        except KeyError:
+            continue
+    return None
+
+
+def _hint_rules(venue):
+    """The venue file's own sign_hints (words only; floor digits and "nearest:" are handled below)."""
+    for word, target in getattr(venue, "sign_hints", {}).items():
+        if len(word) > 1 and not target.startswith("nearest:") and target in venue.nodes:
+            yield re.compile(rf"\b{re.escape(word)}", re.I), (target,)
 RESTROOM_RE = re.compile(r"restroom|toilet|washroom|\bwc\b|🚻", re.I)
 FLOOR_RES = (
     re.compile(r"\b(?:floor|level|fl\.?)\s*(\d{1,2})\b", re.I),
@@ -127,7 +146,12 @@ def match_banner(text: str, venue, frm: str | None = None) -> tuple[str | None, 
     """Banner/sign rules -> (node, confidence, rule). Rules: banner, restroom, floor."""
     if not text:
         return None, 0.0, None
-    hits = [(m.start(), node) for rx, node in BANNERS if (m := rx.search(text)) and node in venue.nodes]
+    hits = []
+    for rx, targets in (*_hint_rules(venue), *BANNERS):
+        m = rx.search(text)
+        node = _resolve_any(venue, targets) if m else None
+        if node:
+            hits.append((m.start(), node))
     if hits:
         return min(hits)[1], 0.95, "banner"
     level = None
