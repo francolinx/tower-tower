@@ -68,3 +68,4 @@ h2 { font-size: 20px; margin: 0 0 8px; color: var(--accent); }
 .route-map .dot { fill: #fff; }
 @keyframes tower-dash { to { stroke-dashoffset: -5; } }
 @media (prefers-reduced-motion: reduce) { .route-map .route { animation: none; } }
+footer a { color: var(--accent); font-size: 14px; }
