@@ -22,6 +22,9 @@ from tower.store import INTERESTS
 from tower.timeutil import utc_now_iso
 
 log = logging.getLogger("tower-core.alerts")
+# httpx logs every request URL at INFO; Telegram URLs contain the bot token. Keep it quiet.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 COOLDOWN_S = 600
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://tower.cnh.radarhq.io")
@@ -60,11 +63,16 @@ class Cooldown:
     def __init__(self, seconds: float = COOLDOWN_S, clock=time.monotonic):
         self.seconds, self.clock, self.last = seconds, clock, {}
 
+    def ready(self, key: str) -> bool:
+        return self.clock() - self.last.get(key, -1e18) >= self.seconds
+
+    def mark(self, key: str) -> None:
+        self.last[key] = self.clock()
+
     def allow(self, key: str) -> bool:
-        now = self.clock()
-        if now - self.last.get(key, -1e18) < self.seconds:
+        if not self.ready(key):
             return False
-        self.last[key] = now
+        self.mark(key)
         return True
 
 
@@ -78,10 +86,11 @@ class ChatRefs:
             self.by_ref = json.loads(path.read_text())
 
     def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.by_ref))
-        os.chmod(tmp, 0o600)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # never world-readable
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(self.by_ref))
         tmp.replace(self.path)
 
     def ref_for(self, chat_id: int) -> str:
@@ -89,6 +98,8 @@ class ChatRefs:
             if cid == chat_id:
                 return ref
         ref = secrets.token_hex(3)  # 6 hex chars, easy to type
+        while ref in self.by_ref:
+            ref = secrets.token_hex(3)
         self.by_ref[ref] = chat_id
         self._save()
         return ref
@@ -129,6 +140,10 @@ class Telegram:
                 r = await self.client.get(
                     self._url("getUpdates"), params={"timeout": 30, "offset": self.offset}
                 )
+                if r.status_code != 200:  # 401 bad token, 409 another poller, 429 rate limit
+                    log.warning("telegram poll status=%d", r.status_code)
+                    await asyncio.sleep(30 if r.status_code in (401, 404) else 5)
+                    continue
                 for u in r.json().get("result", []):
                     self.offset = u["update_id"] + 1
                     msg = u.get("message") or {}
@@ -203,7 +218,7 @@ class Alerter:
         hits = await asyncio.to_thread(self.percolate, moment)
         sent = 0
         for h in hits:
-            if not self.cooldown.allow(h["id"]):
+            if not self.cooldown.ready(h["id"]):
                 continue
             chat_id = self.refs.chat_id(h["chat_ref"])
             if chat_id is None:
@@ -214,6 +229,7 @@ class Alerter:
             if extra:
                 text = f"{text}\n{extra}"
             if await self.tg.send(chat_id, text):
+                self.cooldown.mark(h["id"])  # only a delivered alert starts the 10-minute cooldown
                 sent += 1
         if hits:
             log.info("percolate room=%s matches=%d alerts_sent=%d", moment["room"], len(hits), sent)

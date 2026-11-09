@@ -49,3 +49,22 @@ def test_alert_route_line_step_free(tmp_path):
     # unknown location -> default north-foyer; unknown room -> no route line
     assert a.route_line("nobody", "salt-palace-level-2-255-ef").startswith("You're at North Foyer")
     assert a.route_line(ref, "main") == ""
+
+
+def test_chat_ref_no_collision(tmp_path, monkeypatch):
+    import tower.alerts as al
+
+    seq = iter(["aaaaaa", "aaaaaa", "bbbbbb"])
+    monkeypatch.setattr(al.secrets, "token_hex", lambda n: next(seq))
+    refs = ChatRefs(tmp_path / "c.json")
+    assert refs.ref_for(1) == "aaaaaa"
+    assert refs.ref_for(2) == "bbbbbb"
+    assert refs.chat_id("aaaaaa") == 1
+
+
+def test_cooldown_ready_mark_split():
+    t = [0.0]
+    c = Cooldown(600, clock=lambda: t[0])
+    assert c.ready("i") and c.ready("i")  # checking alone doesn't consume it
+    c.mark("i")
+    assert not c.ready("i")
