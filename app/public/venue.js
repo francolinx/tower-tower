@@ -123,9 +123,10 @@
     closeCamera();
     $('locate-status').textContent = 'reading sign…';
     const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
-    const fd = new FormData(); fd.append('image', blob, 'sign.jpg');
     try {
-      const r = await fetch(`${sparkHttp}/api/locate`, { method: 'POST', body: fd });
+      const r = await fetch(`${sparkHttp}/api/locate`, {
+        method: 'POST', headers: { 'content-type': blob.type }, body: blob,
+      });
       const j = await r.json();
       if (j.node) {
         setInput($('where'), j.node); saveWhere();
