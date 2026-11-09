@@ -22,6 +22,9 @@ from tower.store import INTERESTS
 from tower.timeutil import utc_now_iso
 
 log = logging.getLogger("tower-core.alerts")
+# httpx logs every request URL at INFO; Telegram URLs contain the bot token. Keep it quiet.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 COOLDOWN_S = 600
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://tower.cnh.radarhq.io")
@@ -56,6 +59,12 @@ class Cooldown:
     def mark(self, key: str) -> None:
         self.last[key] = self.clock()
 
+    def allow(self, key: str) -> bool:
+        if not self.ready(key):
+            return False
+        self.mark(key)
+        return True
+
 
 class ChatRefs:
     """Opaque code <-> Telegram chat id, persisted locally with 0600 permissions."""
@@ -69,7 +78,7 @@ class ChatRefs:
     def _save(self) -> None:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # never world-readable
         with os.fdopen(fd, "w") as f:
             f.write(json.dumps(self.by_ref))
         tmp.replace(self.path)
@@ -185,7 +194,7 @@ class Alerter:
                 continue
             link = moment_link(moment["room"], moment["talk_id"], moment["t_start"])
             if await self.tg.send(chat_id, alert_text(h["label"], room_name, link)):
-                self.cooldown.mark(h["id"])
+                self.cooldown.mark(h["id"])  # only a delivered alert starts the 10-minute cooldown
                 sent += 1
         if hits:
             log.info("percolate room=%s matches=%d alerts_sent=%d", moment["room"], len(hits), sent)

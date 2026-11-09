@@ -106,3 +106,11 @@ def test_poll_waits_on_non_ok_response(monkeypatch):
     with pytest.raises(PollFinished):
         asyncio.run(telegram.poll(lambda chat_id: None))
     assert sleeps == [7]
+
+
+def test_cooldown_ready_mark_split():
+    t = [0.0]
+    c = Cooldown(600, clock=lambda: t[0])
+    assert c.ready("i") and c.ready("i")  # checking alone doesn't consume it
+    c.mark("i")
+    assert not c.ready("i")
