@@ -49,6 +49,16 @@ def moment_link(room: str, talk_id: str, t_start: float) -> str:
     return f"{PUBLIC_APP_URL}/?room={room}#moment={talk_id}@{t_start:.1f}"
 
 
+def route_link(frm: str, to: str) -> str:
+    return f"{PUBLIC_APP_URL}/?from={frm}&to={to}&step_free=1#route"
+
+
+def route_text(from_name: str, route: dict, link: str) -> str:
+    mins = max(1, round(route["total_seconds"] / 60))
+    first = "; ".join(s["text"] for s in route["steps"][:2])
+    return f"You're at {from_name}. {mins} min, step-free: {first}… full route: {link}"
+
+
 class Cooldown:
     def __init__(self, seconds: float = COOLDOWN_S, clock=time.monotonic):
         self.seconds, self.clock, self.last = seconds, clock, {}
@@ -146,9 +156,31 @@ class Telegram:
 
 
 class Alerter:
-    def __init__(self, store, telegram: Telegram, refs: ChatRefs):
-        self.store, self.tg, self.refs = store, telegram, refs
+    DEFAULT_FROM = "north-foyer"
+
+    def __init__(self, store, telegram: Telegram, refs: ChatRefs, venue=None):
+        self.store, self.tg, self.refs, self.venue = store, telegram, refs, venue
         self.cooldown = Cooldown()
+        self.where: dict[str, str] = {}  # chat_ref -> last-known venue node (memory only)
+
+    def set_location(self, chat_ref: str, node: str) -> bool:
+        ref = chat_ref.strip().lower()
+        if self.refs.chat_id(ref) is None or self.venue is None:
+            return False
+        self.where[ref] = self.venue.resolve(node)
+        return True
+
+    def route_line(self, chat_ref: str, room: str) -> str:
+        """Step-free route from the person's last-known spot to the alerted room ('' if unknown room)."""
+        if self.venue is None:
+            return ""
+        frm = self.where.get(chat_ref, self.DEFAULT_FROM)
+        try:
+            to = self.venue.resolve(room)
+            r = self.venue.route(frm, to, step_free=True)
+        except (KeyError, ValueError):
+            return ""
+        return route_text(self.venue.nodes[frm]["name"], r, route_link(frm, to))
 
     async def on_start(self, chat_id: int) -> None:
         ref = self.refs.ref_for(chat_id)

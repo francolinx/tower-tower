@@ -18,7 +18,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -28,6 +28,7 @@ from tower.chunker import Windower, merge_overlap
 from tower.store import Store, make_moment, slugify
 from tower.telemetry import record_caption, tracer
 from tower.timeutil import to_utc_iso, utc_now_iso
+from tower.venue import Venue
 
 ASR_URL = os.environ.get("ASR_URL", "http://127.0.0.1:8090")
 MIN_SEG_S, MAX_SEG_S = 3.0, 7.0  # moment length bounds
@@ -85,6 +86,7 @@ hub = Hub()
 asr_client: httpx.AsyncClient | None = None
 store: Store | None = None
 alerter: Alerter | None = None
+venue = Venue.load()
 
 
 @app.on_event("startup")
@@ -93,7 +95,8 @@ async def _startup() -> None:
     asr_client = httpx.AsyncClient(base_url=ASR_URL, timeout=10.0)
     store = Store()
     await asyncio.to_thread(store.ensure_indices)
-    alerter = Alerter(store, Telegram(os.environ.get("TG_TOKEN")), ChatRefs())
+    await asyncio.to_thread(store.index_venue, venue.geo_docs())
+    alerter = Alerter(store, Telegram(os.environ.get("TG_TOKEN")), ChatRefs(), venue)
     asyncio.create_task(alerter.tg.poll(alerter.on_start))
     log.info("telegram alerts %s", "enabled" if alerter.tg.enabled else "disabled (no TG_TOKEN)")
     await asyncio.to_thread(embed.model)  # load bge-small on CUDA before the first chunk
@@ -254,6 +257,74 @@ async def add_interest(body: InterestIn):
         raise HTTPException(status_code=404, detail="unknown Telegram code; message the bot /start")
     log.info("interest stored id=%s query_len=%d", interest_id, len(body.query))
     return {"id": interest_id}
+
+
+# --- venue: wayfinding inside the Salt Palace + Hyatt (KubeCon NA 2026 test venue)
+@app.get("/api/venue/nodes")
+async def venue_nodes():
+    return {"nodes": venue.public_nodes()}
+
+
+class RouteIn(BaseModel):
+    from_: str = Field(alias="from", min_length=1, max_length=80)
+    to: str = Field(min_length=1, max_length=80)
+    step_free: bool = False
+
+
+@app.post("/api/route")
+async def route(body: RouteIn):
+    try:
+        with tracer.start_as_current_span("route", attributes={"step_free": body.step_free}) as span:
+            r = venue.route(body.from_, body.to, step_free=body.step_free)
+            span.set_attribute("route.steps", len(r["steps"]))
+            span.set_attribute("route.seconds", r["total_seconds"])
+        return r
+    except KeyError:
+        raise HTTPException(status_code=404, detail="unknown place") from None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="no route") from None
+
+
+@app.get("/api/venue/nearest")
+async def venue_nearest(kind: str, from_: str = Query(alias="from"), step_free: bool = False):
+    """Candidates from ES geo_distance on the venue index, then the shortest walk via the graph."""
+    try:
+        src = venue.resolve(from_)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="unknown place") from None
+    n = venue.nodes[src]
+    cands = await asyncio.to_thread(store.venue_candidates, kind, n["y"] / 1000, n["x"] / 1000)
+    best = None
+    for c in cands:
+        try:
+            r = venue.route(src, c, step_free=step_free)
+        except (KeyError, ValueError):
+            continue
+        if best is None or r["total_seconds"] < best["total_seconds"]:
+            best = {"node": c, "name": venue.nodes[c]["name"],
+                    "total_seconds": r["total_seconds"], "route": r}
+    if best is None:  # ES down or no geo hit: pure graph search
+        try:
+            best = venue.nearest(kind, src, step_free=step_free)
+        except (KeyError, ValueError):
+            raise HTTPException(status_code=404, detail="nothing of that kind reachable") from None
+    return best
+
+
+class LocationIn(BaseModel):
+    chat_ref: str = Field(min_length=4, max_length=32)
+    node: str = Field(min_length=1, max_length=80)
+
+
+@app.post("/api/me/location", status_code=204)
+async def set_location(body: LocationIn):
+    try:
+        ok = alerter.set_location(body.chat_ref, body.node)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="unknown place") from None
+    if not ok:
+        raise HTTPException(status_code=404, detail="unknown Telegram code")
+    return Response(status_code=204)
 
 
 @app.get("/api/moments")

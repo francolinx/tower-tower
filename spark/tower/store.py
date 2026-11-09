@@ -16,6 +16,7 @@ MAPPINGS_DIR = Path(__file__).resolve().parent.parent / "es" / "mappings"
 MOMENTS = "moments"
 TALKS = "talks"
 INTERESTS = "interests"
+VENUE = "venue"
 REQUIRED_MOMENT_FIELDS = ("talk_id", "room", "t_start", "t_end", "@timestamp")
 BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
@@ -71,7 +72,7 @@ class Store:
             request_timeout=10,
         )
 
-    def ensure_indices(self, names=(MOMENTS, TALKS, INTERESTS)) -> None:
+    def ensure_indices(self, names=(MOMENTS, TALKS, INTERESTS, VENUE)) -> None:
         for name in names:
             path = MAPPINGS_DIR / f"{name}.json"
             if not path.exists() or self.es.indices.exists(index=name):
@@ -149,3 +150,24 @@ class Store:
         except (NotFoundError, *ES_DOWN):
             return {}
         return {h["_source"]["room"]: h["_source"] for h in r["hits"]["hits"]}
+
+    # --- venue (geo_point from the venue graph's x,y on a tiny lat/lon scale)
+    def index_venue(self, docs: list[dict]) -> int:
+        from elasticsearch.helpers import bulk
+
+        ok, _ = bulk(self.es, ({"_index": VENUE, "_id": d["id"], "_source": d} for d in docs), refresh=True)
+        return ok
+
+    def venue_candidates(self, poi: str, lat: float, lon: float, size: int = 5) -> list[str]:
+        """Closest points of interest of a kind, as the crow flies (graph routing picks the winner)."""
+        try:
+            r = self.es.search(
+                index=VENUE,
+                query={"bool": {"filter": [{"term": {"poi": poi}}]}},
+                sort=[{"_geo_distance": {"location": {"lat": lat, "lon": lon}, "order": "asc"}}],
+                size=size,
+                source=["id"],
+            )
+        except (NotFoundError, *ES_DOWN):
+            return []
+        return [h["_source"]["id"] for h in r["hits"]["hits"]]

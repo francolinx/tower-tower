@@ -1,0 +1,16 @@
+{
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "id":               { "type": "keyword" },
+      "name":             { "type": "text", "fields": { "raw": { "type": "keyword" } } },
+      "building":         { "type": "keyword" },
+      "level":            { "type": "integer" },
+      "kind":             { "type": "keyword" },
+      "poi":              { "type": "keyword" },
+      "step_free_access": { "type": "boolean" },
+      "aliases":          { "type": "keyword" },
+      "location":         { "type": "geo_point" }
+    }
+  }
+}

@@ -78,6 +78,31 @@ def test_failed_alert_does_not_start_cooldown(tmp_path):
     assert telegram.calls == 2
 
 
+def test_alert_sends_only_topic_room_and_moment_link(tmp_path):
+    from tower.venue import Venue
+
+    class FakeTelegram:
+        def __init__(self):
+            self.messages = []
+
+        async def send(self, chat_id, text):
+            self.messages.append((chat_id, text))
+            return True
+
+    refs = ChatRefs(tmp_path / "chats.json")
+    ref = refs.ref_for(12345)
+    telegram = FakeTelegram()
+    alerter = Alerter(None, telegram, refs, venue=Venue.load())
+    alerter.where[ref] = "150-d-f"
+    alerter.percolate = lambda moment: [{"id": "interest1", "chat_ref": ref, "label": "eBPF security"}]
+    moment = {"room": "salt-palace-level-2-255-ef", "talk_id": "talk-1", "t_start": 12.34}
+
+    assert asyncio.run(alerter.check(moment, "Room 255 EF")) == 1
+    assert telegram.messages == [
+        (12345, alert_text("eBPF security", "Room 255 EF", moment_link(moment["room"], "talk-1", 12.34)))
+    ]
+
+
 def test_poll_waits_on_non_ok_response(monkeypatch):
     class PollFinished(BaseException):
         pass
@@ -114,3 +139,19 @@ def test_cooldown_ready_mark_split():
     assert c.ready("i") and c.ready("i")  # checking alone doesn't consume it
     c.mark("i")
     assert not c.ready("i")
+
+
+def test_alert_route_line_step_free(tmp_path):
+    from tower.venue import Venue
+
+    refs = ChatRefs(tmp_path / "c.json")
+    ref = refs.ref_for(7)
+    a = Alerter(store=None, telegram=None, refs=refs, venue=Venue.load())
+    assert a.set_location(ref, "150-d-f")
+    line = a.route_line(ref, "salt-palace-level-2-255-ef")
+    assert line.startswith("You're at 150 D-F.") and "step-free" in line
+    assert "from=150-d-f&to=salt-palace-level-2-255-ef&step_free=1#route" in line
+    assert "escalator" not in line.lower()
+    # unknown location -> default north-foyer; unknown room -> no route line
+    assert a.route_line("nobody", "salt-palace-level-2-255-ef").startswith("You're at North Foyer")
+    assert a.route_line(ref, "main") == ""
