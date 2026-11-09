@@ -1,0 +1,38 @@
+# Pull-request checks. The starter's build-and-deploy workflow still builds and
+# deploys the image on every push to main; this one gates PRs.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  spark:
+    name: spark (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spark
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff pytest pytest-asyncio fastapi httpx "elasticsearch>=9,<10"
+      - run: ruff check .
+      - run: pytest -q
+
+  image:
+    name: image build (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: APP_VERSION=pr-${{ github.sha }}
