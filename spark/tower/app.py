@@ -16,13 +16,10 @@ import os
 import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from tower import embed
@@ -455,32 +452,3 @@ async def ws_captions(ws: WebSocket, room: str):
         pass
     finally:
         hub.subs[room].discard(ws)
-
-
-# --- Fallback: serve the caption page straight from the Spark (same files as app/public).
-# The team-cluster gateway is the primary host; this keeps the Spark URL usable on its own.
-PAGE_DIR = Path(__file__).resolve().parents[2] / "app" / "public"
-DASH0_JS = PAGE_DIR.parent / "node_modules" / "@dash0" / "sdk-web" / "dist" / "dash0.js"
-
-
-@app.get("/config.js", include_in_schema=False)
-async def page_config(request: Request):
-    host = request.headers.get("host", "127.0.0.1:8088")
-    local = host.startswith(("127.0.0.1", "localhost"))
-    cfg = {"version": "spark", "sparkWs": f"{'ws' if local else 'wss'}://{host}", "rum": None}
-    return Response(
-        f"window.TOWER_CONFIG = {json.dumps(cfg)};\n",
-        media_type="application/javascript",
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-@app.get("/vendor/dash0.js", include_in_schema=False)
-async def dash0_js():
-    if not DASH0_JS.exists():
-        return Response("", media_type="application/javascript")
-    return FileResponse(DASH0_JS, media_type="application/javascript")
-
-
-if PAGE_DIR.exists():
-    app.mount("/", StaticFiles(directory=PAGE_DIR, html=True), name="page")
