@@ -22,6 +22,8 @@
 | 16:28 | The Shop graph (demo default, 41 nodes / 55 edges, P–L4 + roof); loader normalises its alias-map + `sign_hints` shape; Matterport-based coordinates | #13 | **Changes requested, auto-applied:** Shop elevator/stair ids weren't recognised as shafts, so rides read as walks → fixed; we also ranked levels (P < L2 … < ROOF) for up/down | — |
 | 16:34 | Inline SVG level map (rooms as boxes, animated route + moving dot, level tabs) + Matterport 3D-scan link; verified live: stage → roof NW step-free, 3 min | #14 | Approved | — |
 | 16:40 | Level label fix (LL3 → L3); README final (diagram no longer shows the cut text model) | #16, #15 | — | — |
+| 16:56 | The Shop coordinates from the Matterport floor plans (stair core 68,5; elevator 56,7; west corridor; NE meeting rooms, restrooms + food); deployed `8cb3e95`, stage → roof NW step-free 170 s | #17 | Approved, no findings | — |
+| 17:00 | README setup steps checked against the repo (slides seeding, gateway serves the page, Secret via Radar) | #18 | — | — |
 | — | Photo test on real venue photos: **not run** — no photos reached the bot before the freeze (puller + rules unit-tested; synthetic "255 EF" sign still 0.52 s warm, confidence 1.0) | — | — | — |
 
 ## Dash0 metric names (as stored, PromQL)

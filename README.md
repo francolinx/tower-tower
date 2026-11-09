@@ -76,18 +76,21 @@ cd spark
 ./run.sh --vision                        # ASR (+ Qwen3-VL) in Docker, tower-core in tmux under opentelemetry-instrument
 set -a; source ~/cnh-prep/.env; set +a
 python seed_schedule.py                  # 78 Monday talks -> talks index
+python seed_slides.py ~/cnh-prep/data/slides/slides.json   # published decks, one doc per page (data stays outside the repo)
 tailscale funnel --bg 8088               # public https://spark-6771.tail626e79.ts.net
 python tools/send_wav.py some16k.wav --room salt-palace-level-2-255-ef   # latency probe
 ruff check . && pytest -q
 ```
 
-tower-core also serves the caption page at `/`, so the Spark URL works without the cluster.
+The caption page is served by the cluster gateway (`app/`); the Spark URL serves the API and WebSockets only.
+`TOWER_VENUE` picks the default venue (`theshop`); `TOWER_TG_POLL=0 ./run.sh` pauses the Telegram poller so
+`tools/pull_telegram_photos.py` can fetch test photos sent to the bot.
 
 ### Cluster half (`app/`)
 
 Push to `main`: the `build-and-deploy` Action builds an amd64 image to GHCR and Argo CD syncs
-namespace `team-tower`. Runtime tokens come from Kubernetes Secret `app-credentials`, created by a
-human, never committed.
+namespace `team-tower`. Runtime tokens come from Kubernetes Secret `app-credentials` in `team-tower`
+(created through Radar, values from the env file; never committed). The Argo CD Application is `argocd/application.yaml`.
 
 ## Privacy
 
