@@ -85,11 +85,26 @@
         </div>
       </form>
       <p id="route-summary" class="route-summary" aria-live="polite"></p>
+      <div id="nav" class="nav" hidden>
+        <div class="nav-main" aria-live="polite">
+          <div id="nav-glyph" class="nav-glyph"></div>
+          <div class="nav-text"><div id="nav-title" class="nav-title"></div><div id="nav-sub" class="nav-sub"></div></div>
+        </div>
+        <div class="nav-progress"><span id="nav-prog"></span><div class="nav-bar"><div id="nav-bar-fill"></div></div></div>
+        <div class="nav-btns">
+          <button type="button" id="nav-prev" aria-label="Previous step">◀ Prev</button>
+          <button type="button" id="nav-start" aria-label="Start from step 1">Start</button>
+          <button type="button" id="nav-next" aria-label="Next step">Next ▶</button>
+        </div>
+        <div class="nav-tools">
+          <button type="button" id="nav-overview" aria-pressed="false" aria-label="Toggle overview of the whole level">⤢ Overview</button>
+          <label class="check"><input type="checkbox" id="nav-auto"> 🔊 auto</label>
+        </div>
+        <details class="nav-list"><summary>▼ All steps</summary><ol id="nav-steps" class="nav-steps"></ol></details>
+      </div>
       <div id="level-tabs" class="level-tabs" role="tablist" aria-label="Floor"></div>
       <div id="route-map" class="route-map"></div>
-      <details class="route-details"><summary>Steps</summary>
-        <ol id="route-steps" class="route-steps"></ol>
-      </details>
+      <ol id="route-steps" class="route-steps" hidden></ol>
     </section>
   </main>
   <footer>No audio stored · no face recognition · all inference local on a DGX Spark · <span id="ver"></span>

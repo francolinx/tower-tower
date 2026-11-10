@@ -74,14 +74,165 @@
       if (!r.ok) { sum.textContent = 'No route found.'; return; }
       lastRoute = await r.json();
       sum.textContent = `${mins(lastRoute.total_seconds)}${lastRoute.step_free ? ', step-free' : ''}`;
-      for (const s of lastRoute.steps) {
-        const li = document.createElement('li');
-        li.textContent = s.text;
-        out.appendChild(li);
-      }
       $('speak').disabled = false;
-      drawMap(lastRoute);
+      navStart(lastRoute);
     } catch { sum.textContent = 'Routing unavailable.'; }
+  }
+
+  // ---- turn-by-turn: nav card, step list, map follow
+  const nav = { route: null, steps: [], slices: [], idx: -1, overview: false };
+  const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const navActive = (route) => !!route && nav.route === route && nav.idx >= 0;
+  const navSlice = () => (nav.slices[nav.idx] || []);
+  const GLYPHS = {
+    straight: '<path d="M24 42V8M13 19L24 8l11 11"/>',
+    left: '<path d="M32 42V24a8 8 0 0 0-8-8H10M17 9l-7 7 7 7"/>',
+    right: '<path d="M16 42V24a8 8 0 0 1 8-8h14M31 9l7 7-7 7"/>',
+    up: '<path d="M6 42h8v-7h8v-7h8v-7h8"/><path d="M38 4v11M33 9l5-5 5 5"/>',
+    down: '<path d="M6 21h8v7h8v7h8v7h8"/><path d="M10 4v11M5 10l5 5 5-5"/>',
+    elevator: '<rect x="11" y="5" width="26" height="38" rx="3"/><path d="M24 12l6 7H18z M24 36l6-7H18z" fill="currentColor"/>',
+    escalator: '<path d="M5 38h9l20-24h9"/><path d="M36 4h7v7"/>',
+    arrive: '<path d="M14 44V5"/><path d="M14 7h22l-6 7 6 7H14z" fill="currentColor"/>',
+  };
+  function glyph(st, size) {
+    const k = st.kind === 'arrive' ? 'arrive' : st.kind === 'elevator' ? 'elevator'
+      : st.kind === 'escalator' ? 'escalator' : (st.turn || 'straight');
+    return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPHS[k] || GLYPHS.straight}</svg>`;
+  }
+  const lvName = (l) => (/^\d+$/.test(String(l)) ? 'L' + l : String(l));
+  function navStart(route) {
+    nav.route = route; nav.steps = route.steps || []; nav.overview = false;
+    // path slice per step: from_node -> node, walking forward through route.path (corridors included)
+    nav.slices = []; let k = 0;
+    for (const st of nav.steps) {
+      const i = route.path.indexOf(st.from_node, k);
+      const j = route.path.indexOf(st.node, i < 0 ? k : i);
+      if (i >= 0 && j >= i) { nav.slices.push(route.path.slice(i, j + 1)); k = j; } else nav.slices.push([st.node]);
+    }
+    $('nav').hidden = false;
+    renderStepList();
+    const want = Number(params.get('step')) || 1;  // ?step=N opens on that step (default 1)
+    params.delete('step');
+    navGo(want - 1);
+  }
+  function navGo(i) {
+    if (!nav.steps.length) return;
+    nav.idx = Math.max(0, Math.min(nav.steps.length - 1, i));
+    const st = nav.steps[nav.idx], n = graph && graph.byId.get(st.node);
+    if (n) mapLevel = lvKey(n);
+    renderCard();
+    drawMap(nav.route, true);
+  }
+  function renderCard() {
+    const st = nav.steps[nav.idx], total = nav.steps.length;
+    const left = nav.steps.slice(nav.idx).reduce((a, s) => a + (s.seconds || 0), 0);
+    $('nav-glyph').innerHTML = glyph(st, 72);
+    $('nav-title').textContent = st.title || st.text;
+    $('nav-sub').textContent = `${st.seconds || 0} s · Floor ${lvName(st.level)} · ${st.detail || ''}`;
+    $('nav-prog').textContent = `Step ${nav.idx + 1} of ${total} · ${mins(left)} left`;
+    $('nav-bar-fill').style.width = `${Math.round(((nav.idx + 1) / total) * 100)}%`;
+    $('nav-prev').disabled = nav.idx === 0;
+    const last = nav.idx === total - 1;
+    $('nav-next').textContent = last ? 'Done ✓' : 'Next ▶';
+    $('nav-next').setAttribute('aria-label', last ? 'Finish navigation' : 'Next step');
+    $('nav-overview').setAttribute('aria-pressed', String(nav.overview));
+    document.querySelectorAll('#nav-steps li').forEach((li, k) => li.classList.toggle('active', k === nav.idx));
+  }
+  function renderStepList() {
+    const ol = $('nav-steps'); ol.innerHTML = '';
+    nav.steps.forEach((st, k) => {
+      const li = document.createElement('li');
+      const b = document.createElement('button'); b.type = 'button';
+      b.innerHTML = glyph(st, 22);
+      b.appendChild(Object.assign(document.createElement('span'), { className: 'ns-title', textContent: st.title || st.text }));
+      b.appendChild(Object.assign(document.createElement('span'), { className: 'ns-secs', textContent: st.seconds ? `${st.seconds} s` : '' }));
+      b.onclick = () => navGo(k);
+      li.appendChild(b); ol.appendChild(li);
+    });
+  }
+  function speakStep() {
+    if (!('speechSynthesis' in window) || nav.idx < 0) return;
+    const st = nav.steps[nav.idx];
+    speechSynthesis.cancel();
+    speechSynthesis.speak(new SpeechSynthesisUtterance(`${st.title}. ${st.detail || ''}`));
+  }
+  function navNext() {
+    if (nav.idx >= nav.steps.length - 1) { nav.idx = -1; $('nav').hidden = true; drawMap(nav.route, true); return; }
+    navGo(nav.idx + 1);
+    if ($('nav-auto').checked) speakStep();
+  }
+  $('nav-next').onclick = navNext;
+  $('nav-prev').onclick = () => navGo(nav.idx - 1);
+  $('nav-start').onclick = () => { if (nav.route) { $('nav').hidden = false; navGo(0); if ($('nav-auto').checked) speakStep(); } };
+  $('nav-overview').onclick = () => { nav.overview = !nav.overview; renderCard(); drawMap(nav.route, true); };
+  document.addEventListener('keydown', (e) => {
+    if ($('nav').hidden || nav.idx < 0 || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); navNext(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); navGo(nav.idx - 1); }
+  });
+  (() => {  // swipe on the card: left = next, right = prev
+    let x0 = null;
+    $('nav').addEventListener('pointerdown', (e) => { x0 = e.clientX; });
+    $('nav').addEventListener('pointerup', (e) => {
+      if (x0 === null) return;
+      const dx = e.clientX - x0; x0 = null;
+      if (Math.abs(dx) > 50) { if (dx < 0) navNext(); else navGo(nav.idx - 1); }
+    });
+  })();
+  // full route dimmed; active segment bright with the moving dot
+  function drawRouteLayers(svg, pts, active, r, extra) {
+    const line = (p, cls) => { if (p.length < 2) return null; const d = 'M' + p.map((q) => q.join(',')).join(' L'); el('path', { d, class: cls }, svg); return d; };
+    if (!active) {
+      const d = line(pts, `route ${extra}`);
+      if (d) { const dot = el('circle', { r, class: 'dot' }, svg); if (!reduceMotion()) el('animateMotion', { dur: `${Math.max(2, pts.length * 0.8)}s`, repeatCount: 'indefinite', path: d }, dot); }
+      return;
+    }
+    line(pts, `route dim ${extra}`);
+    const d = line(active, `route active ${extra}`);
+    const dot = el('circle', { r, class: 'dot' }, svg);
+    if (d && !reduceMotion()) el('animateMotion', { dur: `${Math.max(1.5, active.length * 0.6)}s`, repeatCount: 'indefinite', path: d }, dot);
+    else if (active.length) { dot.setAttribute('cx', active[active.length - 1][0]); dot.setAttribute('cy', active[active.length - 1][1]); }
+  }
+  // zoom the schematic to the active segment by animating viewBox (rAF, ease-out, ~400 ms)
+  let curVB = null, curVBLevel = null;
+  function fitBox(pts, bounds, minSpan) {
+    if (!pts || !pts.length || nav.overview) return bounds;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    let w = Math.max(x1 - x0, minSpan), h = Math.max(y1 - y0, minSpan * 0.75);
+    w *= 1.5; h *= 1.5;  // ~25% padding each side
+    const ratio = bounds[2] / bounds[3];
+    if (w / h < ratio) w = h * ratio; else h = w / ratio;
+    w = Math.min(w, bounds[2]); h = Math.min(h, bounds[3]);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const x = Math.max(bounds[0], Math.min(bounds[0] + bounds[2] - w, cx - w / 2));
+    const y = Math.max(bounds[1], Math.min(bounds[1] + bounds[3] - h, cy - h / 2));
+    return [x, y, w, h];
+  }
+  function svgFollow(svg, active, bounds) {
+    const target = active ? fitBox(active, bounds, bounds[2] * 0.3) : bounds;
+    const from = curVB && curVBLevel === mapLevel ? curVB : bounds;
+    curVB = target; curVBLevel = mapLevel;
+    if (reduceMotion()) { svg.setAttribute('viewBox', target.join(' ')); return; }
+    const t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 400), e = 1 - Math.pow(1 - k, 3);
+      svg.setAttribute('viewBox', from.map((v, i) => v + (target[i] - v) * e).join(' '));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  // photo map: scale/translate the image+overlay together (CSS transition, ~400 ms)
+  function photoFollow(inner, active, H) {
+    inner.style.transformOrigin = '0 0';
+    if (!active || !active.length || nav.overview) { inner.style.transform = ''; inner.parentElement.style.overflow = ''; return; }
+    const [x, y, w, h] = fitBox(active.map((p) => [p[0], p[1] / H * 100]), [0, 0, 100, 100], 18);
+    const sc = Math.max(1, Math.min(4, 100 / Math.max(w, h)));
+    const cx = x + w / 2, cy = y + h / 2;
+    const tx = Math.max(100 - 100 * sc, Math.min(0, 50 - cx * sc)), ty = Math.max(100 - 100 * sc, Math.min(0, 50 - cy * sc));
+    inner.parentElement.style.overflow = 'hidden';
+    inner.style.transition = reduceMotion() ? '' : 'transform 400ms cubic-bezier(.2,.7,.3,1)';
+    inner.style.transform = `translate(${tx}%, ${ty}%) scale(${sc})`;
   }
 
   // ---- inline SVG of one level, drawn from /api/venue/graph (no map images, no external tiles)
@@ -172,15 +323,10 @@
     const wps = pinsData.waypoints || {};
     const at = (id) => { const p = pins[id] || wps[id]; return p ? [p[0], p[1] * H / 100] : null; };
     const pts = path.map(at).filter(Boolean);  // route through the pinned nodes it passes
-    if (pts.length > 1) {
-      const d = 'M' + pts.map((p) => p.join(',')).join(' L');
-      el('path', { d, class: 'route photo-route' }, svg);
-      const dot = el('circle', { r: 0.9, class: 'dot' }, svg);
-      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        el('animateMotion', { dur: `${Math.max(2, pts.length * 0.7)}s`, repeatCount: 'indefinite', path: d }, dot);
-      }
-    }
-    const here = idFromInput($('where')), dest = idFromInput($('dest'));
+    const active = navActive(route) ? navSlice().map(at).filter(Boolean) : null;
+    drawRouteLayers(svg, pts, active, 0.9, 'photo-route');
+    const navStep = navActive(route) ? nav.steps[nav.idx] : null;
+    const here = navStep ? navStep.from_node : idFromInput($('where')), dest = idFromInput($('dest'));
     for (const [id] of Object.entries(pins)) {
       const n = graph.byId.get(id);
       const special = id === here || id === dest || (route && path.includes(id));
@@ -199,6 +345,7 @@
       bindTile(g, id);
     }
     inner.appendChild(svg); wrap.appendChild(inner);
+    photoFollow(inner, active, H);
     const zoom = document.createElement('div'); zoom.className = 'zoom-btns';
     for (const [t, f] of [['−', 1 / 1.5], ['+', 1.5]]) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
@@ -248,17 +395,21 @@
       el('text', { x, y }, g).textContent = label;
       bindTile(g, n.id);
     }
-    const pts = path.map((id) => graph.byId.get(id)).filter((n) => n && lvKey(n) === mapLevel).map(P);
-    if (pts.length > 1) {
-      const d = 'M' + pts.map((p) => p.join(',')).join(' L');
-      el('path', { d, class: 'route' }, svg);
-      const dot = el('circle', { r: 1.4, class: 'dot' }, svg);
-      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        el('animateMotion', { dur: `${Math.max(2, pts.length * 0.8)}s`, repeatCount: 'indefinite', path: d }, dot);
-      } else {
-        dot.setAttribute('cx', pts[pts.length - 1][0]); dot.setAttribute('cy', pts[pts.length - 1][1]);
+    const onLv = (id) => { const n = graph.byId.get(id); return n && lvKey(n) === mapLevel ? n : null; };
+    const pts = path.map(onLv).filter(Boolean).map(P);
+    let active = null;
+    if (navActive(route)) {
+      const st = nav.steps[nav.idx];
+      active = navSlice().map(onLv).filter(Boolean).map(P);
+      const from = onLv(st.from_node), dst = onLv(path[path.length - 1]);
+      if (from) el('circle', { cx: P(from)[0], cy: P(from)[1], r: 2, class: 'pulse' }, svg);
+      if (dst) {
+        const [fx, fy] = P(dst);
+        el('line', { x1: fx, y1: fy, x2: fx, y2: fy - 6, class: 'flag-pole' }, svg);
+        el('path', { d: `M${fx},${fy - 6} l4,1.4 l-4,1.4 z`, class: 'flag' }, svg);
       }
     }
+    drawRouteLayers(svg, pts, active, 1.4, '');
     if (ripple && ids.has(ripple)) {  // "you are here" ripple after setting the origin
       const [rx, ry] = P(graph.byId.get(ripple));
       el('circle', { cx: rx, cy: ry, r: 2, class: 'ripple' }, svg);
@@ -267,11 +418,13 @@
     const box = $('route-map');
     box.innerHTML = '';
     box.appendChild(svg);
+    svgFollow(svg, active, [0, 0, maxX - minX, maxY - minY]);
   }
   $('route-form').onsubmit = (e) => { e.preventDefault(); saveWhere(); route(); };
 
   $('speak').onclick = () => {
     if (!lastRoute || !('speechSynthesis' in window)) return;
+    if (navActive(lastRoute)) { speakStep(); return; }
     speechSynthesis.cancel();
     const text = [$('route-summary').textContent, ...lastRoute.steps.map((s, i) => `Step ${i + 1}. ${s.text}`)].join('. ');
     speechSynthesis.speak(new SpeechSynthesisUtterance(text));
@@ -345,7 +498,7 @@
       b.setAttribute('aria-selected', String((venue || 'theshop') === id));
       b.onclick = async () => {
         if ((venue || 'theshop') === id) return;
-        venue = id; graph = null; mapLevel = null; lastRoute = null;
+        venue = id; graph = null; mapLevel = null; lastRoute = null; nav.idx = -1; nav.route = null; $('nav').hidden = true;
         $('where').value = ''; $('dest').value = ''; $('route-steps').innerHTML = ''; $('route-summary').textContent = '';
         params.set('venue', id); params.delete('to'); params.delete('from');
         history.replaceState(null, '', location.pathname + '?' + params.toString());
