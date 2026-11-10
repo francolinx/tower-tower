@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import heapq
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -138,7 +139,24 @@ class Venue:
     def _edge_secs(self, a: str, b: str, step_free: bool) -> int:
         return min(s for v, s, sf in self.adj[a] if v == b and (sf or not step_free))
 
+    def _compress(self, path: list[str], step_free: bool) -> tuple[list[str], dict[tuple[str, str], int]]:
+        """Drop corridor waypoints from a path for step text; seconds are summed across them."""
+        cp, seg, acc, via = [path[0]], {}, 0, []
+        self._via: dict[tuple[str, str], str] = {}
+        for a, b in zip(path, path[1:], strict=False):
+            acc += self._edge_secs(a, b, step_free)
+            if self.nodes[b]["kind"] == "corridor":
+                via.append(self.nodes[b]["name"])
+            if self.nodes[b]["kind"] != "corridor" or b == path[-1]:
+                seg[(cp[-1], b)] = acc
+                if via:
+                    self._via[(cp[-1], b)] = max(set(via), key=via.count)
+                cp.append(b)
+                acc, via = 0, []
+        return cp, seg
+
     def _steps(self, path: list[str], step_free: bool) -> list[dict[str, Any]]:
+        path, seg = self._compress(path, step_free)
         steps: list[dict[str, Any]] = []
         i = 0
         while i < len(path) - 1:
@@ -148,7 +166,7 @@ class Venue:
                 # Collapse consecutive moves within one shaft into a single step.
                 j, secs = i, 0
                 while j < len(path) - 1 and self.shaft_of(path[j + 1]) == sa:
-                    secs += self._edge_secs(path[j], path[j + 1], step_free)
+                    secs += seg[(path[j], path[j + 1])]
                     j += 1
                 start, end = self.nodes[path[i]], self.nodes[path[j]]
                 kind = start["kind"]
@@ -162,11 +180,13 @@ class Venue:
                 steps.append({"text": text, "level": end["level"], "seconds": secs, "node": path[j]})
                 i = j
                 continue
-            secs = self._edge_secs(a, b, step_free)
+            secs = seg[(a, b)]
             na, nb = self.nodes[a], self.nodes[b]
             if nb["kind"] in SHAFT_KINDS:
                 label = nb["name"].split(" (Level")[0]
                 text = f"Walk to the {label} ({secs} s)"
+            elif getattr(self, "_via", {}).get((a, b)):
+                text = f"Walk along the {self._via[(a, b)]} to {nb['name']} ({secs} s)"
             elif na["kind"] == "foyer":
                 text = f"Walk along {na['name']} to {nb['name']} ({secs} s)"
             elif na["kind"] in SHAFT_KINDS:
@@ -238,7 +258,7 @@ class Venue:
     def public_nodes(self) -> list[dict[str, Any]]:
         out = [{"id": n["id"], "name": n["name"], "level": n["level"], "kind": n["kind"],
                 "building": n["building"], "poi": n.get("poi"), "aliases": list(n.get("aliases", []))}
-               for n in self.nodes.values()]
+               for n in self.nodes.values() if n["kind"] != "corridor"]
         return sorted(out, key=lambda n: (n["building"], n["level"], n["name"].lower()))
 
     def graph(self) -> dict[str, Any]:
@@ -262,7 +282,7 @@ class Venues:
         self.default = default if (self.dir / f"{default}.json").exists() else "saltpalace"
 
     def names(self) -> list[str]:
-        return sorted(p.stem for p in self.dir.glob("*.json") if not p.stem.endswith("_pins"))
+        return sorted(p.stem for p in self.dir.glob("*.json") if not p.stem.endswith(("_pins", "_corridors")))
 
     def get(self, name: str | None = None) -> Venue:
         name = name or self.default
@@ -270,8 +290,106 @@ class Venues:
         if not _VENUE_NAME_RE.match(name) or not path.exists():
             raise KeyError("unknown venue")
         if name not in self._cache:
-            self._cache[name] = Venue.load(path)
+            corr, pins = self.dir / f"{name}_corridors.json", self.dir / f"{name}_pins.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            pct: dict[str, list[float]] = {}
+            if corr.exists() and pins.exists():
+                data, pct = apply_corridors(data, json.loads(corr.read_text(encoding="utf-8")),
+                                            json.loads(pins.read_text(encoding="utf-8"))["pins"])
+            v = Venue.from_dict(data)
+            v.pct = pct
+            self._cache[name] = v
         return self._cache[name]
 
     def name_of(self, name: str | None) -> str:
         return name or self.default
+
+
+def apply_corridors(data: dict[str, Any], corr: dict[str, Any], pins: dict[str, list[float]]
+                    ) -> tuple[dict[str, Any], dict[str, list[float]]]:
+    """Replace the venue's walking edges with a corridor network traced on the venue map image.
+
+    Pinned rooms snap to the nearest corridor waypoint on their level; Hyatt (off-image) keeps its
+    own edges; other unpinned nodes become leaves on their nearest pinned node, so they can't be
+    shortcuts. Returns (graph data, image coordinates {node id: [x%, y%]})."""
+    aspect, k = corr.get("aspect", 1.0), corr.get("m_per_pct", 1.2) * corr.get("s_per_m", 1.3)
+    pins = {**pins, **corr.get("extra_pins", {})}
+    nodes = {n["id"]: dict(n) for n in data["nodes"]}
+
+    def dist(p, q):
+        return math.hypot(p[0] - q[0], (p[1] - q[1]) * aspect)
+
+    def secs(p, q):
+        return max(3, round(dist(p, q) * k))
+
+    pct: dict[str, list[float]] = {nid: list(xy) for nid, xy in pins.items() if nid in nodes}
+    wp_at: dict[tuple, str] = {}
+    edges: list[dict[str, Any]] = []
+    for c in corr["corridors"]:
+        pts: list[list[float]] = []
+        for a, b in zip(c["points"], c["points"][1:], strict=False):
+            n = max(1, math.ceil(dist(a, b) / 3.0))
+            pts += [[a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n] for i in range(n)]
+        pts.append(c["points"][-1])
+        prev = None
+        for i, p in enumerate(pts):
+            key = (c["level"], round(p[0], 2), round(p[1], 2))
+            wid = wp_at.get(key)
+            if wid is None:
+                wid = wp_at[key] = f"wp-{c['id']}-{i}"
+                nodes[wid] = {"id": wid, "name": c["name"], "building": "salt-palace",
+                              "level": c["level"], "kind": "corridor", "x": p[0], "y": p[1],
+                              "step_free_access": True, "aliases": []}
+                pct[wid] = p
+            if prev:
+                edges.append({"a": prev, "b": wid, "seconds": secs(pct[prev], p), "step_free": True})
+            prev = wid
+    by_level: dict[Any, list[str]] = {}
+    for wid in wp_at.values():
+        by_level.setdefault(nodes[wid]["level"], []).append(wid)
+
+    def nearest_wp(level, p):
+        return min(by_level.get(level, []), key=lambda w: dist(pct[w], p), default=None)
+
+    for vt in corr.get("verticals", []):
+        prev = None
+        for st in vt["stops"]:
+            sid = f"{vt['id']}-l{st['level']}"
+            nodes[sid] = {"id": sid, "name": f"{vt['name']} (Level {st['level']})", "building": "salt-palace",
+                          "level": st["level"], "kind": vt["kind"], "shaft": vt["id"], "x": st["at"][0],
+                          "y": st["at"][1], "step_free_access": bool(vt["step_free"]), "aliases": []}
+            pct[sid] = st["at"]
+            w = nearest_wp(st["level"], st["at"])
+            if w:
+                edges.append({"a": sid, "b": w, "seconds": secs(st["at"], pct[w]), "step_free": True})
+            if prev:
+                edges.append({"a": prev, "b": sid, "seconds": int(vt["seconds_per_level"]),
+                              "step_free": bool(vt["step_free"])})
+            prev = sid
+    for nid, xy in pins.items():
+        if nid in nodes:
+            w = nearest_wp(nodes[nid]["level"], xy)
+            if w:
+                edges.append({"a": nid, "b": w, "seconds": secs(xy, pct[w]), "step_free": True})
+    # Hyatt and other non-Salt-Palace edges stay; unpinned Salt Palace nodes hang off a pinned node.
+    old = data["edges"]
+    sp = {nid for nid, n in nodes.items() if n.get("building") == "salt-palace"}
+    edges += [e for e in old if e["a"] not in sp and e["b"] not in sp]
+    adj: dict[str, list[tuple[str, int]]] = {}
+    for e in old:
+        adj.setdefault(e["a"], []).append((e["b"], int(e["seconds"])))
+        adj.setdefault(e["b"], []).append((e["a"], int(e["seconds"])))
+    linked = {e["a"] for e in edges} | {e["b"] for e in edges}
+    for nid in [n for n in sp if n not in linked and n in adj]:
+        seen, frontier = {nid: 0}, [(0, nid)]
+        while frontier:
+            d, u = heapq.heappop(frontier)
+            if u != nid and u in pct and nodes[u]["kind"] != "corridor":
+                edges.append({"a": nid, "b": u, "seconds": max(3, d),
+                              "step_free": bool(nodes[nid].get("step_free_access", True))})
+                break
+            for v, w in adj.get(u, []):
+                if v not in seen or seen[v] > d + w:
+                    seen[v] = d + w
+                    heapq.heappush(frontier, (d + w, v))
+    return {**data, "nodes": list(nodes.values()), "edges": edges}, pct

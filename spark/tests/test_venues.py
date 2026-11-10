@@ -251,3 +251,17 @@ def test_landmarks_resolve_on_theshop():
     assert match_landmarks(["terrace"], v)[0] == "shop-roof-door"
     assert match_landmarks(["Dash0 banner"], v)[0] == "shop-l3-dash0-table"
     assert match_landmarks(["blue wall", "projector"], v)[0] == "shop-l3-stage"
+
+
+def test_saltpalace_corridor_routes():
+    """Corridor network traced on the official map: routes follow concourses, lifts when step-free."""
+    v = Venues().get("saltpalace")
+    r = v.route("north-foyer", "salt-palace-level-2-255-ef", step_free=True)
+    names = {v.nodes[n]["name"] for n in r["path"]}
+    assert "Upper Concourse" in names and any(v.nodes[n]["kind"] == "elevator" for n in r["path"])
+    assert all(v.nodes[n]["kind"] != "escalator" for n in r["path"])
+    walk = v.route("hall-de-keynote", "150-a-c")
+    assert "Lower Concourse" in {v.nodes[n]["name"] for n in walk["path"]}
+    assert len(walk["steps"]) == 1 and "Lower Concourse" in walk["steps"][0]["text"]
+    assert all(n["kind"] != "corridor" for n in v.public_nodes())
+    assert v.route("north-foyer", "hyatt-lobby")["total_seconds"] > 0  # Hyatt still reachable
