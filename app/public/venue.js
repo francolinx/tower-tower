@@ -31,7 +31,7 @@
       nodes = j.nodes; venue = venue || j.venue;
     } catch { return; }
     const dl = $('venue-nodes');
-    dl.innerHTML = '';
+    dl.innerHTML = ''; byName = new Map(); byId = new Map();
     for (const n of nodes) {
       byName.set(label(n), n.id); byId.set(n.id, n);
       const o = document.createElement('option'); o.value = label(n); dl.appendChild(o);
@@ -86,6 +86,7 @@
 
   // ---- inline SVG of one level, drawn from /api/venue/graph (no map images, no external tiles)
   let graph = null, mapLevel = null;
+  const lvKey = (n) => (n && n.building === 'hyatt' ? 'Hyatt' : String(n ? n.level : ''));
   const SVGNS = 'http://www.w3.org/2000/svg';
   const el = (tag, attrs, parent) => {
     const e = document.createElementNS(SVGNS, tag);
@@ -98,13 +99,13 @@
     const r = await fetch(`/api/venue/graph?${vq()}`);
     graph = await r.json();
     graph.byId = new Map(graph.nodes.map((n) => [n.id, n]));
-    graph.levels = [...new Set(graph.nodes.map((n) => String(n.level)))];
+    graph.levels = [...new Set(graph.nodes.map(lvKey))];
     return graph;
   }
   function drawTabs(route) {
     const tabs = $('level-tabs');
     tabs.innerHTML = '';
-    const onRoute = new Set((route ? route.path : []).map((id) => String(graph.byId.get(id)?.level)));
+    const onRoute = new Set((route ? route.path : []).map((id) => lvKey(graph.byId.get(id))));
     for (const lv of graph.levels) {
       const b = document.createElement('button');
       b.type = 'button'; b.setAttribute('role', 'tab');
@@ -157,10 +158,10 @@
     const path = route ? route.path : [];
     if (!keepLevel || mapLevel === null) {
       const start = graph.byId.get(path[0]) || graph.byId.get(idFromInput($('where')) || '');
-      mapLevel = start ? String(start.level) : graph.levels[0];
+      mapLevel = start ? lvKey(start) : graph.levels[0];
     }
     drawTabs(route);
-    const nodes = graph.nodes.filter((n) => String(n.level) === mapLevel);
+    const nodes = graph.nodes.filter((n) => lvKey(n) === mapLevel);
     if (!nodes.length) return;
     const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y), pad = 8;
     const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
@@ -187,7 +188,7 @@
       el('text', { x, y }, g).textContent = label;
       bindTile(g, n.id);
     }
-    const pts = path.map((id) => graph.byId.get(id)).filter((n) => n && String(n.level) === mapLevel).map(P);
+    const pts = path.map((id) => graph.byId.get(id)).filter((n) => n && lvKey(n) === mapLevel).map(P);
     if (pts.length > 1) {
       const d = 'M' + pts.map((p) => p.join(',')).join(' L');
       el('path', { d, class: 'route' }, svg);
@@ -272,5 +273,28 @@
     } catch { $('locate-status').textContent = 'Locate unavailable — pick from the list.'; }
   };
 
-  loadNodes().then(() => drawMap(null));
+  // venue toggle: The Shop (demo) / KubeCon · Salt Palace
+  const pills = document.createElement('div');
+  pills.className = 'level-tabs venue-pills'; pills.setAttribute('role', 'group'); pills.setAttribute('aria-label', 'Venue');
+  const VENUES = [['theshop', 'The Shop'], ['saltpalace', 'KubeCon · Salt Palace']];
+  function drawPills() {
+    pills.innerHTML = '';
+    for (const [id, name] of VENUES) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = name; b.setAttribute('aria-pressed', String((venue || 'theshop') === id));
+      b.setAttribute('aria-selected', String((venue || 'theshop') === id));
+      b.onclick = async () => {
+        if ((venue || 'theshop') === id) return;
+        venue = id; graph = null; mapLevel = null; lastRoute = null;
+        $('where').value = ''; $('dest').value = ''; $('route-steps').innerHTML = ''; $('route-summary').textContent = '';
+        params.set('venue', id); params.delete('to'); params.delete('from');
+        history.replaceState(null, '', location.pathname + '?' + params.toString());
+        drawPills(); await loadNodes(); drawMap(null);
+      };
+      pills.appendChild(b);
+    }
+  }
+  $('level-tabs').before(pills);
+  drawPills();
+  loadNodes().then(() => { drawPills(); drawMap(null); });
 })();
