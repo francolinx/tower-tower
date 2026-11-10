@@ -17,11 +17,25 @@ import httpx
 VLM_URL = os.environ.get("VLM_URL", "http://127.0.0.1:8001")
 VLM_MODEL = os.environ.get("VLM_MODEL", "qwen3-vl")
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
-PROMPT = (
-    'Return only JSON {"sign": "<room number or room name on the sign, or null>", '
-    '"text": "<other printed text on signs or banners, e.g. company names, Floor 3, Restroom, or null>"}. '
-    "Read only printed signs and banners. Ignore people."
+LANDMARKS = (
+    "skeleton", "communal table", "kitchen counter", "bar stools", "fridge", "blue wall", "yellow stairs",
+    "stairs", "elevator", "projector", "screen", "stage", "reception desk", "glass meeting room",
+    "phone booth", "rooftop", "terrace", "outdoor", "Dash0 banner", "Radar banner", "Sonar banner",
+    "Elastic banner",
 )
+PROMPT = (
+    'Return only JSON {"sign": "<room number or room name on a printed sign, or null>", '
+    '"text": "<other printed text on signs or banners, or null>", '
+    '"landmarks": [<zero or more of: ' + ", ".join(f'"{w}"' for w in LANDMARKS) + '>]}. '
+    "Only list landmarks you can clearly see. Read printed signs and objects only. Ignore people."
+)
+# landmark -> node id, or "@stairs"/"@elevator" = that shaft on the current level
+LANDMARK_TARGETS = {
+    "skeleton": "shop-l3-skeleton", "yellow stairs": "@stairs", "stairs": "@stairs", "elevator": "@elevator",
+    "kitchen counter": "shop-l3-kitchen", "bar stools": "shop-l3-kitchen", "projector": "shop-l3-stage",
+    "screen": "shop-l3-stage", "rooftop": "shop-roof-door", "terrace": "shop-roof-door",
+    "outdoor": "shop-roof-door", "phone booth": "shop-l3-nw", "glass meeting room": "shop-l3-glassroom",
+}
 # Banner text -> venue node (sponsor tables at the demo venue). Earliest mention in the text wins.
 # Targets are tried as node ids, then as venue aliases (theshop: "dash0" -> shop-l3-dash0-table).
 BANNERS = (
@@ -108,6 +122,42 @@ def match_sign(sign: str, nodes: list[dict]) -> tuple[str | None, float]:
     return best_id, confidence
 
 
+def parse_landmarks(content: str) -> list[str]:
+    """Landmarks from the reply, kept only if they're on our list (model output is untrusted)."""
+    m = re.search(r"\{.*\}", content, re.S)
+    try:
+        items = json.loads(m.group(0)).get("landmarks") if m else None
+    except (json.JSONDecodeError, AttributeError):
+        return []
+    allowed = {w.lower(): w for w in LANDMARKS}
+    return [allowed[str(x).strip().lower()] for x in (items or []) if str(x).strip().lower() in allowed]
+
+
+def match_landmarks(landmarks: list[str], venue, frm: str | None = None) -> tuple[str | None, str | None]:
+    """First landmark that resolves in this venue -> (node, landmark)."""
+    level = None
+    if frm:
+        try:
+            level = venue.nodes[venue.resolve(frm)]["level"]
+        except KeyError:
+            level = None
+    for lm in landmarks:
+        target = LANDMARK_TARGETS.get(lm.lower())
+        if target in ("@stairs", "@elevator"):
+            node = venue.nearest_on_level("", level, frm, kinds=(target[1:],)) if level is not None else None
+        elif target and target in venue.nodes:
+            node = target
+        else:
+            base = re.sub(r"\s+(banner|desk|counter)$", "", lm, flags=re.I)
+            node = _resolve_any(venue, [lm, base, base.lower()])
+            if node is None:
+                node = next((t for w, t in getattr(venue, "sign_hints", {}).items()
+                             if w.lower() == base.lower() and t in venue.nodes), None)
+        if node:
+            return node, lm
+    return None, None
+
+
 def parse_reading(content: str) -> tuple[str | None, str | None]:
     """(sign, text) from the model's JSON reply; either may be None."""
     m = re.search(r"\{.*\}", content, re.S)
@@ -174,12 +224,12 @@ def match_banner(text: str, venue, frm: str | None = None) -> tuple[str | None, 
 
 async def read_sign(
     client: httpx.AsyncClient, image: bytes, mime: str = "image/jpeg"
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, list[str]]:
     b64 = base64.b64encode(image).decode()
     body = {
         "model": VLM_MODEL,
         "temperature": 0,
-        "max_tokens": 120,
+        "max_tokens": 160,
         "messages": [{
             "role": "user",
             "content": [
@@ -190,4 +240,5 @@ async def read_sign(
     }
     r = await client.post(f"{VLM_URL}/v1/chat/completions", json=body, timeout=20.0)
     r.raise_for_status()
-    return parse_reading(r.json()["choices"][0]["message"]["content"])
+    content = r.json()["choices"][0]["message"]["content"]
+    return (*parse_reading(content), parse_landmarks(content))

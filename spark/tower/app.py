@@ -370,21 +370,28 @@ async def locate_from_sign(request: Request,
         t0 = time.monotonic()
         with tracer.start_as_current_span("locate", attributes={"image.bytes": len(data)}) as span:
             try:
-                sign, text = await locate.read_sign(asr_client, data, content_type) or (None, None)
+                reading = await locate.read_sign(asr_client, data, content_type) or (None, None, [])
+                sign, text, landmarks = (*reading, [])[:3]
             except httpx.HTTPError as e:
                 log.warning("locate vlm error type=%s", type(e).__name__)
                 raise HTTPException(status_code=503, detail="sign reader unavailable") from None
+            # order: printed sign (1.0) -> landmark (0.6) -> banner/restroom/floor text rules
             node, conf = locate.match_sign(sign, v.public_nodes()) if sign else (None, 0.0)
-            rule = "room" if node else None
+            rule, matched = ("room", f"sign:{sign}") if node else (None, None)
+            if node is None:
+                node, lm = locate.match_landmarks(landmarks or [], v, from_)
+                if node:
+                    conf, rule, matched = 0.6, "landmark", f"landmark:{lm}"
             if node is None:  # banners, restroom signs, floor numbers
                 node, conf, rule = locate.match_banner(" ".join(filter(None, [sign, text])), v, from_)
+                matched = f"{rule}:{(sign or text or '')[:40]}" if node else None
             latency = time.monotonic() - t0
             span.set_attribute("locate.latency_s", round(latency, 3))
             span.set_attribute("locate.matched", node is not None)
             span.set_attribute("locate.rule", rule or "none")
         log.info("locate bytes=%d latency_s=%.2f rule=%s", len(data), latency, rule or "none")
         return {"node": node, "name": v.nodes[node]["name"] if node else None, "confidence": conf,
-                "rule": rule}
+                "rule": rule, "matched": matched}
     finally:
         del data  # never stored
 
