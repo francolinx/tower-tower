@@ -109,7 +109,7 @@ See [.gitar/documents/privacy.md](.gitar/documents/privacy.md). In short:
 
 ## Next
 
-- Visual place recognition: 100 panorama photos of The Shop (5 levels) captured Nov 9, stored outside the repo; next step is landmark fingerprinting so a photo of any wall locates you, not just signs. The map gets better with every photo attendees contribute.
+- Visual place recognition: 100 panorama photos of The Shop (5 levels) captured Nov 9, stored outside the repo; next step is landmark fingerprinting so a photo of any wall locates you, not just signs. Locate photos stay in-memory only (see Privacy); any future opt-in photo contribution will be documented in the privacy model first.
 
 ## How we built it
 
