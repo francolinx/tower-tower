@@ -24,6 +24,8 @@
 | 16:40 | Level label fix (LL3 → L3); README final (diagram no longer shows the cut text model) | #16, #15 | — | — |
 | 16:56 | The Shop coordinates from the Matterport floor plans (stair core 68,5; elevator 56,7; west corridor; NE meeting rooms, restrooms + food); deployed `8cb3e95`, stage → roof NW step-free 170 s | #17 | Approved, no findings | — |
 | 17:00 | README setup steps checked against the repo (slides seeding, gateway serves the page, Secret via Radar) | #18 | — | — |
+| 17:05 | README "Next": visual place recognition (100 panoramas of The Shop, outside the repo) | #19 | **Gitar review pending at freeze** (merged on green CI per the 17:05 rule) | — |
+| 17:10 | **Freeze**, tag `v0.1` | — | — | — |
 | — | Photo test on real venue photos: **not run** — no photos reached the bot before the freeze (puller + rules unit-tested; synthetic "255 EF" sign still 0.52 s warm, confidence 1.0) | — | — | — |
 
 ## Dash0 metric names (as stored, PromQL)
