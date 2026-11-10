@@ -17,6 +17,7 @@ import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import (
@@ -252,6 +253,7 @@ async def rooms():
 class SearchIn(BaseModel):
     q: str = Field(max_length=200)
     size: int = Field(default=10, ge=1, le=25)
+    talk_id: str | None = Field(default=None, pattern=r"^s\d{1,10}$")
 
 
 # POST, not GET: a query string would end up in HTTP span attributes and access logs.
@@ -261,9 +263,9 @@ async def search(body: SearchIn):
     if not q:
         return {"hits": [], "slides": []}
     vec = await asyncio.to_thread(embed.embed_query, q)
-    hits = await asyncio.to_thread(store.search, q, vec, size)
+    hits = await asyncio.to_thread(store.search, q, vec, size, body.talk_id)
     try:
-        slides = await asyncio.to_thread(store.search_slides, q, vec, 5)
+        slides = await asyncio.to_thread(store.search_slides, q, vec, 5, body.talk_id)
     except ES_DOWN:
         slides = []
     return {"hits": hits, "slides": slides}
@@ -439,6 +441,31 @@ async def set_location(body: LocationIn):
     if not ok:
         raise HTTPException(status_code=404, detail="unknown Telegram code")
     return Response(status_code=204)
+
+
+MT = ZoneInfo("America/Denver")
+
+
+@app.get("/api/talks")
+async def talks(day: str = Query(pattern=r"^\d{4}-\d{2}-\d{2}$"),
+                room: str | None = Query(default=None, max_length=80)):
+    """Talks on one conference day (Mountain Time) from the talks index; MT times for display."""
+    try:
+        d0 = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=MT)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad day") from None
+    start, end = to_utc_iso(d0), to_utc_iso(d0 + timedelta(days=1))
+    try:
+        items = await asyncio.to_thread(store.talks_between, start, end, room)
+    except ES_DOWN:
+        raise HTTPException(status_code=503, detail="schedule unavailable") from None
+
+    def mt(iso: str) -> str:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(MT).strftime("%H:%M")
+
+    for t in items:
+        t["starts_mt"], t["ends_mt"] = mt(t["starts_at"]), mt(t["ends_at"])
+    return {"day": day, "talks": items}
 
 
 @app.get("/api/moments")
