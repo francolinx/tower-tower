@@ -11,4 +11,4 @@ resources:
 images:
   - name: app
     newName: ghcr.io/francolinx/tower-tower
-    newTag: 25b7680
+    newTag: e4dd732
