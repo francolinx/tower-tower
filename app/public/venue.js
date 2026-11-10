@@ -169,7 +169,8 @@
     inner.appendChild(img);
     const svg = el('svg', { viewBox: `0 0 100 ${H}`, preserveAspectRatio: 'none', class: 'photo-overlay',
       role: 'img', 'aria-label': `Venue map, pins for ${mapLevel}${route ? ', route highlighted' : ''}` });
-    const at = (id) => (pins[id] ? [pins[id][0], pins[id][1] * H / 100] : null);
+    const wps = pinsData.waypoints || {};
+    const at = (id) => { const p = pins[id] || wps[id]; return p ? [p[0], p[1] * H / 100] : null; };
     const pts = path.map(at).filter(Boolean);  // route through the pinned nodes it passes
     if (pts.length > 1) {
       const d = 'M' + pts.map((p) => p.join(',')).join(' L');
@@ -189,7 +190,12 @@
         'aria-label': `${n.name}: Enter = take me here, Shift+Enter = I am here` }, svg);
       const cls = id === here ? 'pin-dot from' : id === dest ? 'pin-dot to' : 'pin-dot';
       el('circle', { cx: x, cy: y, r: id === here || id === dest ? 1.3 : 0.8, class: cls }, g);
-      if (id === here || id === dest) el('text', { x, y: y - 2, class: 'pin-label' }, g).textContent = n.short || n.name;
+      if (id === here || id === dest) el('text', { x, y: y - 2.2, class: 'pin-label' }, g).textContent = n.short || n.name;
+      if (id === here) el('circle', { cx: x, cy: y, r: 1.3, class: 'pulse' }, g);  // you are here
+      if (id === dest) {  // destination flag
+        el('line', { x1: x, y1: y, x2: x, y2: y - 4, class: 'flag-pole' }, g);
+        el('path', { d: `M${x},${y - 4} l2.6,0.9 l-2.6,0.9 z`, class: 'flag' }, g);
+      }
       bindTile(g, id);
     }
     inner.appendChild(svg); wrap.appendChild(inner);
@@ -230,6 +236,7 @@
     }
     const onRoute = new Set(path);
     for (const n of nodes) {
+      if (n.kind === 'corridor') continue;
       const [x, y] = P(n);
       const label = (n.short || n.name).slice(0, 18);
       const w = Math.max(10, label.length * 1.3), h = 5;

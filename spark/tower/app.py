@@ -317,6 +317,9 @@ async def venue_pins(venue_name: str | None = Query(default=None, alias="venue",
         raise HTTPException(status_code=404, detail="no pins for this venue")
     data = json.loads(path.read_text())
     data.pop("_comment", None)
+    # corridor waypoints + lift/escalator stops: where the route polyline bends (not drawn as pins)
+    pct = getattr(pick_venue(venue_name), "pct", {}) or {}
+    data["waypoints"] = {k: v for k, v in pct.items() if k not in data.get("pins", {})}
     return data
 
 

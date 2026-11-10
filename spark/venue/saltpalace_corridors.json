@@ -1,0 +1,35 @@
+{
+  "_comment": "Walkable network traced on the official KCNA26 venue map raster (x%, y% of the image). Vertices are densified to <=3% steps at load. Polylines join where they share a vertex on the same level. Distances: 1.2 m per % (y scaled by aspect), 1.3 s per m.",
+  "aspect": 0.813,
+  "m_per_pct": 1.2,
+  "s_per_m": 1.3,
+  "corridors": [
+    {"id": "lower-concourse", "name": "Lower Concourse", "level": 1,
+     "points": [[33.8, 58.5], [37.8, 59.4], [40.5, 59.4], [43.0, 59.4], [46.0, 59.4], [49.0, 59.4], [52.0, 59.4], [54.0, 61.5], [54.8, 64.3]]},
+    {"id": "keynote-entrance", "name": "Hall DE entrance", "level": 1, "points": [[40.5, 59.4], [40.5, 56.5], [40.3, 54.0]]},
+    {"id": "showcase-entrance", "name": "Halls A-C entrance", "level": 1, "points": [[52.0, 59.4], [55.0, 58.0], [57.5, 56.8], [57.4, 53.5]]},
+    {"id": "hyatt-link", "name": "Hyatt link", "level": 1, "points": [[37.8, 59.4], [38.5, 62.0], [39.7, 64.8]]},
+    {"id": "west-temple", "name": "West Temple corridor", "level": 1, "points": [[54.8, 64.3], [55.5, 68.0], [56.1, 72.2]]},
+    {"id": "l1-east", "name": "Level 1 corridor", "level": 1,
+     "points": [[54.8, 64.3], [57.0, 63.8], [59.2, 63.8], [61.5, 63.5], [63.3, 63.3], [64.8, 60.5], [65.8, 57.5], [67.0, 54.5], [69.5, 52.0], [72.5, 50.5], [75.0, 48.8], [77.7, 47.0]]},
+    {"id": "lower-mezzanine", "name": "Lower Mezzanine", "level": 1,
+     "points": [[77.7, 47.0], [75.5, 44.5], [73.8, 41.5], [73.6, 38.5], [73.5, 35.5], [72.0, 33.5], [69.5, 33.0]]},
+    {"id": "secondary-entrance", "name": "Secondary entrance corridor", "level": 1, "points": [[73.8, 41.5], [71.0, 40.5], [70.5, 38.5]]},
+    {"id": "upper-concourse", "name": "Upper Concourse", "level": 2,
+     "points": [[76.8, 63.0], [77.0, 59.6], [80.0, 59.6], [83.0, 59.6], [86.0, 59.6], [87.0, 56.5], [87.5, 53.5], [89.0, 51.0], [90.5, 49.0], [91.8, 47.4]]},
+    {"id": "upper-mezzanine", "name": "Upper Mezzanine", "level": 2,
+     "points": [[91.8, 47.4], [90.6, 44.5], [90.0, 41.5], [89.8, 38.5], [89.6, 35.8]]},
+    {"id": "l3-355", "name": "355 Foyer", "level": 3, "points": [[91.5, 28.6], [92.0, 27.3], [94.0, 27.5], [96.0, 27.5]]}
+  ],
+  "verticals": [
+    {"id": "core-155-255-355-elevator", "name": "Elevator (155 / 255 / 355 core)", "kind": "elevator", "step_free": true,
+     "seconds_per_level": 45, "stops": [{"level": 1, "at": [76.6, 47.9]}, {"level": 2, "at": [91.2, 46.4]}, {"level": 3, "at": [91.3, 28.9]}]},
+    {"id": "core-155-255-355-escalator", "name": "Escalator (155 / 255 / 355 core)", "kind": "escalator", "step_free": false,
+     "seconds_per_level": 30, "stops": [{"level": 1, "at": [76.2, 46.4]}, {"level": 2, "at": [90.8, 45.8]}, {"level": 3, "at": [91.0, 29.4]}]},
+    {"id": "north-foyer-elevator", "name": "Elevator (North Foyer)", "kind": "elevator", "step_free": true,
+     "seconds_per_level": 45, "stops": [{"level": 1, "at": [54.2, 66.0]}, {"level": 2, "at": [76.2, 64.4]}]},
+    {"id": "north-foyer-escalator", "name": "Escalator (North Foyer)", "kind": "escalator", "step_free": false,
+     "seconds_per_level": 30, "stops": [{"level": 1, "at": [55.6, 66.4]}, {"level": 2, "at": [77.4, 64.8]}]}
+  ],
+  "extra_pins": {"secondary-entrance-100-south": [70.5, 38.5]}
+}
