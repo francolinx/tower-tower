@@ -27,7 +27,7 @@ def talks_from_sessionize(data: dict, date: str) -> list[dict]:
     now = utc_now_iso()
     out = []
     for s in data.get("sessions", []):
-        if not (s.get("startsAt") or "").startswith(date):
+        if not s.get("startsAt") or (date != "all" and not s["startsAt"].startswith(date)):
             continue
         room_name = rooms.get(s.get("roomId"), "TBD")
         track = next((items[c] for c in s.get("categoryItems", []) if c in items), None)
@@ -47,16 +47,22 @@ def talks_from_sessionize(data: dict, date: str) -> list[dict]:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--date", default="2026-11-09")
+    p.add_argument("--date", default="2026-11-09", help='YYYY-MM-DD or "all"')
+    p.add_argument("--sessionize", help="local Sessionize JSON (default: fetch)")
     a = p.parse_args()
-    data = httpx.get(SESSIONIZE_URL, timeout=30).raise_for_status().json()
+    if a.sessionize:
+        import json
+        with open(a.sessionize, encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = httpx.get(SESSIONIZE_URL, timeout=30).raise_for_status().json()
     talks = talks_from_sessionize(data, a.date)
     store = Store()
     store.ensure_indices()
     actions = ({"_index": TALKS, "_id": t["talk_id"], "_source": t} for t in talks)
     ok, _ = bulk(store.es, actions, refresh=True)
     rooms = sorted({t["room"] for t in talks})
-    print(f"indexed {ok} talks for {a.date} across {len(rooms)} rooms: {', '.join(rooms)}")
+    print(f"indexed {ok} talks for {a.date} across {len(rooms)} rooms")
 
 
 if __name__ == "__main__":

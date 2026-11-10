@@ -50,13 +50,18 @@ def make_moment(
     return doc
 
 
-def rrf_query(q: str, q_vec: list[float], size: int = 10, source: list[str] | None = None) -> dict:
+def rrf_query(q: str, q_vec: list[float], size: int = 10, source: list[str] | None = None,
+              talk_id: str | None = None) -> dict:
+    flt = [{"term": {"talk_id": talk_id}}] if talk_id else []
+    knn = {"field": "embedding", "query_vector": q_vec, "k": size, "num_candidates": 50}
+    if flt:
+        knn["filter"] = flt
     return {
         "retriever": {
             "rrf": {
                 "retrievers": [
-                    {"standard": {"query": {"match": {"text": q}}}},
-                    {"knn": {"field": "embedding", "query_vector": q_vec, "k": size, "num_candidates": 50}},
+                    {"standard": {"query": {"bool": {"must": [{"match": {"text": q}}], "filter": flt}}}},
+                    {"knn": knn},
                 ],
                 "rank_window_size": 50,
                 "rank_constant": 60,
@@ -110,20 +115,33 @@ class Store:
         r = self.es.index(index=MOMENTS, document=doc)
         return r["_id"]
 
-    def search(self, q: str, q_vec: list[float], size: int = 10) -> list[dict]:
-        r = self.es.search(index=MOMENTS, body=rrf_query(q, q_vec, size))
+    def search(self, q: str, q_vec: list[float], size: int = 10, talk_id: str | None = None) -> list[dict]:
+        r = self.es.search(index=MOMENTS, body=rrf_query(q, q_vec, size, talk_id=talk_id))
         hits = [h["_source"] | {"id": h["_id"]} for h in r["hits"]["hits"]]
         titles = self.talk_titles({h["talk_id"] for h in hits})
         for h in hits:
             h["talk_title"] = titles.get(h["talk_id"])
         return hits
 
-    def search_slides(self, q: str, q_vec: list[float], size: int = 5) -> list[dict]:
+    def search_slides(
+        self, q: str, q_vec: list[float], size: int = 5, talk_id: str | None = None
+    ) -> list[dict]:
         try:
-            r = self.es.search(index=SLIDES, body=rrf_query(q, q_vec, size, SLIDE_FIELDS))
+            r = self.es.search(index=SLIDES, body=rrf_query(q, q_vec, size, SLIDE_FIELDS, talk_id=talk_id))
         except NotFoundError:
             return []
         return [h["_source"] | {"id": h["_id"]} for h in r["hits"]["hits"]]
+
+    def talks_between(
+        self, start_utc: str, end_utc: str, room: str | None = None, size: int = 300
+    ) -> list[dict]:
+        flt = [{"range": {"starts_at": {"gte": start_utc, "lt": end_utc}}}]
+        if room:
+            flt.append({"term": {"room": room}})
+        fields = ["talk_id", "title", "speakers", "room", "room_name", "starts_at", "ends_at"]
+        r = self.es.search(index=TALKS, query={"bool": {"filter": flt}}, sort=[{"starts_at": "asc"}],
+                           size=size, source=fields)
+        return [h["_source"] for h in r["hits"]["hits"]]
 
     def moments_around(self, talk_id: str, t: float, window: float = 30.0) -> list[dict]:
         r = self.es.search(

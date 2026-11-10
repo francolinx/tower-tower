@@ -342,7 +342,7 @@
         $('where').value = ''; $('dest').value = ''; $('route-steps').innerHTML = ''; $('route-summary').textContent = '';
         params.set('venue', id); params.delete('to'); params.delete('from');
         history.replaceState(null, '', location.pathname + '?' + params.toString());
-        drawPills(); await loadNodes(); drawMap(null); pickedDest = null; buildPicker();
+        drawPills(); await loadNodes(); drawMap(null); pickedDest = null; buildPicker(); renderTalks();
       };
       pills.appendChild(b);
     }
@@ -399,5 +399,69 @@
     }
   }
   $('dest').addEventListener('input', () => buildPicker());
-  loadNodes().then(() => { drawPills(); drawMap(null); buildPicker(); });
+
+  // ---- KubeCon talks: day tabs, time-grouped list, tap = go to that room; slides & moments per talk
+  const DAYS = [['2026-11-09', 'Mon 9'], ['2026-11-10', 'Tue 10'], ['2026-11-11', 'Wed 11'], ['2026-11-12', 'Thu 12']];
+  const todayMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date());
+  let talkDay = DAYS.some(([d]) => d === todayMT) ? todayMT : DAYS[0][0];
+  const talkCache = new Map();
+  const txt = (tag, cls, t) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = t; return e; };
+  async function renderTalks() {
+    const panel = $('talks');
+    if (venue !== 'saltpalace') { panel.hidden = true; return; }
+    panel.hidden = false;
+    const days = $('talk-days'); days.innerHTML = '';
+    for (const [d, name] of DAYS) {
+      const b = txt('button', '', name); b.type = 'button'; b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(d === talkDay));
+      b.onclick = () => { talkDay = d; renderTalks(); };
+      days.appendChild(b);
+    }
+    const list = $('talk-list'); list.textContent = 'loading talks…';
+    let talks = talkCache.get(talkDay);
+    if (!talks) {
+      try { const r = await fetch(`/api/talks?day=${talkDay}`); talks = (await r.json()).talks; talkCache.set(talkDay, talks); }
+      catch { list.textContent = 'schedule unavailable'; return; }
+    }
+    list.innerHTML = '';
+    let slot = null;
+    for (const t of talks) {
+      if (t.starts_mt !== slot) { slot = t.starts_mt; list.appendChild(txt('h4', 'talk-slot', slot)); }
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'talk';
+      b.appendChild(txt('span', 'talk-title', t.title));
+      b.appendChild(txt('span', 'chip talk-room', t.room_name || t.room));
+      b.onclick = () => openTalk(t);
+      list.appendChild(b);
+    }
+    if (!talks.length) list.textContent = 'No talks that day.';
+  }
+  function openTalk(t) {
+    const box = $('talk-detail'); box.hidden = false; box.innerHTML = '';
+    box.appendChild(txt('strong', '', t.title));
+    box.appendChild(txt('p', 'hint', `${t.starts_mt}–${t.ends_mt} MT · ${t.room_name || t.room}${(t.speakers || []).length ? ' · ' + t.speakers.join(', ') : ''}`));
+    const sm = txt('button', 'chip', 'Slides & moments'); sm.type = 'button';
+    const out = document.createElement('ul'); out.className = 'results';
+    sm.onclick = async () => {
+      out.innerHTML = '<li>searching…</li>';
+      try {
+        const r = await fetch('/api/search', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ q: t.title.slice(0, 200), talk_id: t.talk_id }) });
+        const { hits = [], slides = [] } = await r.json();
+        out.innerHTML = hits.length || slides.length ? '' : '<li>No slides or moments for this talk yet.</li>';
+        for (const p of slides) {
+          const li = document.createElement('li'); const a = document.createElement('a');
+          a.href = `${p.url}#page=${p.page}`; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.className = 'slide-hit';
+          a.textContent = `slides p.${p.page}: ${p.text.slice(0, 120)}…`; li.appendChild(a); out.appendChild(li);
+        }
+        for (const h of hits) { const li = txt('li', '', `${Math.floor(h.t_start / 60)}:${String(Math.floor(h.t_start % 60)).padStart(2, '0')} ${h.text}`); out.appendChild(li); }
+      } catch { out.innerHTML = '<li>search unavailable</li>'; }
+    };
+    box.appendChild(sm); box.appendChild(out);
+    if (byId.has(t.room)) {
+      setInput($('dest'), t.room); pickedDest = t.room; mapLevel = null;
+      if (idFromInput($('where'))) route(); else $('route-summary').textContent = 'Pick where you are to get a route.';
+    }
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  loadNodes().then(() => { drawPills(); drawMap(null); buildPicker(); renderTalks(); });
 })();
