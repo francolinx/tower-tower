@@ -236,3 +236,18 @@ def test_level_rank_orders_shop_levels():
     v = Venues().get("theshop")
     up = [s["text"] for s in v.route("shop-p-lobby", "shop-roof-door")["steps"]]
     assert any(t.startswith("Take the stairs up to Level ROOF") for t in up), up
+
+
+def test_landmarks_resolve_on_theshop():
+    from tower.locate import match_landmarks, parse_landmarks
+    v = Venues().get("theshop")
+    reply = '{"sign": null, "landmarks": ["Skeleton", "unicorn", "stairs"]}'
+    assert parse_landmarks(reply) == ["skeleton", "stairs"]
+    assert match_landmarks(["skeleton"], v) == ("shop-l3-skeleton", "skeleton")
+    assert match_landmarks(["stairs"], v, frm="shop-l4-center")[0] == "shop-l4-stairs"
+    assert match_landmarks(["elevator"], v, frm="shop-l2-center")[0] == "shop-l2-elevator"
+    assert match_landmarks(["stairs"], v) == (None, None)  # no current level -> skip
+    assert match_landmarks(["bar stools"], v)[0] == "shop-l3-kitchen"
+    assert match_landmarks(["terrace"], v)[0] == "shop-roof-door"
+    assert match_landmarks(["Dash0 banner"], v)[0] == "shop-l3-dash0-table"
+    assert match_landmarks(["blue wall", "projector"], v)[0] == "shop-l3-stage"

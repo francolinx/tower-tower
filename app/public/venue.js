@@ -263,7 +263,9 @@
       const j = await r.json();
       if (j.node) {
         setInput($('where'), j.node); saveWhere();
-        $('locate-status').textContent = `You're at ${byId.get(j.node) ? byId.get(j.node).name : j.node} (${Math.round(j.confidence * 100)}% match).`;
+        $('locate-status').textContent = `You're at ${byId.get(j.node) ? byId.get(j.node).name : j.node} (${Math.round(j.confidence * 100)}% match).`
+          + (j.matched ? `\n${j.matched}` : '');
+        $('locate-status').style.whiteSpace = 'pre-line';
       } else {
         $('locate-status').textContent = 'Couldn\'t read a room sign — pick from the list.';
       }
