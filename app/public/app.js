@@ -8,6 +8,14 @@
 
   $('ver').textContent = 'v' + (cfg.version || 'dev');
   const params = new URLSearchParams(location.search);
+  // Demo phone: ?key=<room device key> is saved once, then removed from the address bar so it
+  // doesn't stay in the URL, history, or RUM page views. Wrong keys still get 4401 from the Spark.
+  if (params.get('key')) {
+    try { localStorage.setItem('tower.audioKey', params.get('key').trim()); } catch {}
+    params.delete('key');
+    const q = params.toString();
+    history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+  }
   if (params.get('room')) roomEl.value = params.get('room');
 
   // ---- text size (user-resizable, persisted per device)
