@@ -27,6 +27,25 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.strip().lower()).strip("-")
 
 
+def level_label(level: Any) -> str:
+    """Display label: 3 -> L3, "L3" -> L3, "ROOF" -> ROOF, "P" -> P."""
+    s = norm_level(level).upper()
+    return f"L{s}" if s.isdigit() else s
+
+
+def short_name(name: str) -> str:
+    """'Kitchen counter, sodas and food pickup (floor 3)' -> 'Kitchen counter'."""
+    s = re.sub(r"\s*\([^)]*\)", "", name).strip()
+    s = s.split(",")[0].strip()
+    s = re.split(r"\s+(?:behind|by the|next to)\s+", s)[0].strip()
+    return s or name
+
+
+def clip_words(text: str, n: int) -> str:
+    words = text.split()
+    return text if len(words) <= n else " ".join(words[:n])
+
+
 def level_rank(level: Any) -> float:
     """Order levels for up/down: P/ground < 1 < 2 ... < roof (strings like "L3" don't compare)."""
     s = norm_level(level)
@@ -177,7 +196,9 @@ class Venue:
                     direction = "up" if level_rank(end["level"]) > level_rank(start["level"]) else "down"
                     to_level = norm_level(end["level"]).upper()
                     text = f"Take the {kind} {direction} to Level {to_level} ({secs} s)"
-                steps.append({"text": text, "level": end["level"], "seconds": secs, "node": path[j]})
+                up = level_rank(end["level"]) > level_rank(start["level"])
+                steps.append({"text": text, "level": end["level"], "seconds": secs, "node": path[j],
+                              "from_node": path[i], "kind": kind, "turn": "up" if up else "down"})
                 i = j
                 continue
             secs = seg[(a, b)]
@@ -194,8 +215,53 @@ class Venue:
                     f"Walk to {nb['name']} ({secs} s)"
             else:
                 text = f"Walk from {na['name']} to {nb['name']} ({secs} s)"
-            steps.append({"text": text, "level": nb["level"], "seconds": secs, "node": b})
+            steps.append({"text": text, "level": nb["level"], "seconds": secs, "node": b,
+                          "from_node": a, "kind": "walk"})
             i += 1
+        return self._guidance(steps, path[-1])
+
+    # ------------------------------------------------------------ turn-by-turn
+    def _xy(self, nid: str) -> tuple[float, float]:
+        """Plane coordinates with y pointing north (image % coords flip y; aspect-corrected)."""
+        pct = getattr(self, "pct", None) or {}
+        if nid in pct:
+            return pct[nid][0], -pct[nid][1] * 0.813
+        n = self.nodes[nid]
+        return float(n["x"]), float(n["y"])
+
+    def _guidance(self, steps: list[dict[str, Any]], dst: str) -> list[dict[str, Any]]:
+        """Add kind/turn/title/detail/short names per step, plus a final "arrive" step."""
+        prev_heading = None
+        for st in steps:
+            st["short_from"] = short_name(self.nodes[st["from_node"]]["name"])
+            st["short_to"] = short_name(self.nodes[st["node"]]["name"])
+            st["detail"] = re.sub(r"\s*\(\d+ s\)$", "", st["text"])
+            lvl = level_label(self.nodes[st["node"]]["level"])
+            if st["kind"] == "walk":
+                (x1, y1), (x2, y2) = self._xy(st["from_node"]), self._xy(st["node"])
+                same = (x1, y1) == (x2, y2)
+                heading = prev_heading if same else math.degrees(math.atan2(y2 - y1, x2 - x1))
+                turn = "straight"
+                if prev_heading is not None and heading is not None:
+                    delta = (heading - prev_heading + 180) % 360 - 180
+                    if abs(delta) >= 35:
+                        turn = "left" if delta > 0 else "right"
+                st["turn"] = turn
+                verb = {"straight": "Continue to", "left": "Turn left to", "right": "Turn right to"}[turn]
+                st["title"] = clip_words(f"{verb} {st['short_to']}", 7)
+                prev_heading = heading
+            else:
+                prev_heading = None  # new floor: next walk starts fresh
+                if st["kind"] == "elevator":
+                    st["title"] = f"Elevator to Level {lvl}"
+                else:
+                    st["title"] = f"Take the {st['kind']} {st['turn']} to Level {lvl}"
+        if steps or dst:
+            n = self.nodes[dst]
+            steps.append({"text": f"You've arrived at {n['name']}", "kind": "arrive", "turn": "straight",
+                          "title": "You've arrived", "detail": n["name"], "seconds": 0, "level": n["level"],
+                          "node": dst, "from_node": dst, "short_from": short_name(n["name"]),
+                          "short_to": short_name(n["name"])})
         return steps
 
     def _route_from(self, src: str, dst: str, prev: dict[str, str], dist: dict[str, int],

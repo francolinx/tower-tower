@@ -262,6 +262,38 @@ def test_saltpalace_corridor_routes():
     assert all(v.nodes[n]["kind"] != "escalator" for n in r["path"])
     walk = v.route("hall-de-keynote", "150-a-c")
     assert "Lower Concourse" in {v.nodes[n]["name"] for n in walk["path"]}
-    assert len(walk["steps"]) == 1 and "Lower Concourse" in walk["steps"][0]["text"]
+    moves = [st for st in walk["steps"] if st["kind"] != "arrive"]
+    assert len(moves) == 1 and "Lower Concourse" in moves[0]["text"]
     assert all(n["kind"] != "corridor" for n in v.public_nodes())
     assert v.route("north-foyer", "hyatt-lobby")["total_seconds"] > 0  # Hyatt still reachable
+
+
+def test_turn_by_turn_fields():
+    """Steps carry kind/turn/title/detail/short names; count = compressed moves + 1 arrive step."""
+    for vname, a, b, sf in [("theshop", "shop-l3-kitchen", "shop-roof-nw", False),
+                            ("saltpalace", "north-foyer", "salt-palace-level-2-255-ef", True)]:
+        v = Venues().get(vname)
+        r = v.route(a, b, step_free=sf)
+        steps = r["steps"]
+        cp, _ = v._compress(r["path"], sf)
+        moves, i = 0, 0
+        while i < len(cp) - 1:  # shaft runs collapse into one step
+            sa = v.shaft_of(cp[i])
+            j = i
+            while sa and j < len(cp) - 1 and v.shaft_of(cp[j + 1]) == sa:
+                j += 1
+            moves, i = moves + 1, (j if j > i else i + 1)
+        assert len(steps) == moves + 1
+        assert steps[-1]["kind"] == "arrive" and steps[-1]["title"] == "You've arrived"
+        assert steps[-1]["node"] == r["to"] if "to" in r else steps[-1]["node"] == r["path"][-1]
+        for st in steps:
+            assert {"text", "kind", "turn", "title", "detail", "short_from", "short_to", "from_node", "node",
+                    "level", "seconds"} <= set(st)
+            assert len(st["title"].split()) <= 7 and not st["detail"].endswith(" s)")
+        walks = [st for st in steps if st["kind"] == "walk"]
+        assert walks[0]["turn"] == "straight"
+        shafts = [st for st in steps if st["kind"] in ("stairs", "elevator", "escalator")]
+        assert shafts and all(st["turn"] == "up" for st in shafts)
+    shop = Venues().get("theshop").route("shop-l3-kitchen", "shop-roof-nw")["steps"]
+    assert {"left", "right"} & {st["turn"] for st in shop}  # non-degenerate turns
+    assert shop[0]["short_from"] == "Kitchen counter" and shop[0]["short_to"] == "Help-yourself fridge"
