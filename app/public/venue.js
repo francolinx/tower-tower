@@ -153,6 +153,58 @@
     });
   }
 
+  // ---- KubeCon: the official venue map as hero, pins + animated route on top
+  let schematic = false, pinsData = null, photoZoom = 1;
+  async function drawPhotoMap(route) {
+    if (!pinsData) {
+      try { const r = await fetch(`/api/venue/pins?venue=saltpalace`); if (!r.ok) throw 0; pinsData = await r.json(); }
+      catch { schematic = true; return drawMap(route, true); }
+    }
+    const H = 100 * pinsData.aspect, pins = pinsData.pins;
+    const path = route ? route.path : [];
+    const wrap = document.createElement('div'); wrap.className = 'photo-map';
+    const inner = document.createElement('div'); inner.className = 'photo-inner'; inner.style.width = `${photoZoom * 100}%`;
+    const img = document.createElement('img');
+    img.src = sparkHttp + pinsData.image; img.alt = 'KubeCon NA 2026 venue map'; img.draggable = false;
+    inner.appendChild(img);
+    const svg = el('svg', { viewBox: `0 0 100 ${H}`, preserveAspectRatio: 'none', class: 'photo-overlay',
+      role: 'img', 'aria-label': `Venue map, pins for ${mapLevel}${route ? ', route highlighted' : ''}` });
+    const at = (id) => (pins[id] ? [pins[id][0], pins[id][1] * H / 100] : null);
+    const pts = path.map(at).filter(Boolean);  // route through the pinned nodes it passes
+    if (pts.length > 1) {
+      const d = 'M' + pts.map((p) => p.join(',')).join(' L');
+      el('path', { d, class: 'route photo-route' }, svg);
+      const dot = el('circle', { r: 0.9, class: 'dot' }, svg);
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        el('animateMotion', { dur: `${Math.max(2, pts.length * 0.7)}s`, repeatCount: 'indefinite', path: d }, dot);
+      }
+    }
+    const here = idFromInput($('where')), dest = idFromInput($('dest'));
+    for (const [id] of Object.entries(pins)) {
+      const n = graph.byId.get(id);
+      const special = id === here || id === dest || (route && path.includes(id));
+      if (!n || (lvKey(n) !== mapLevel && !special)) continue;  // level tabs filter pins
+      const [x, y] = at(id);
+      const g = el('g', { class: 'tile pin', tabindex: '0', role: 'button',
+        'aria-label': `${n.name}: Enter = take me here, Shift+Enter = I am here` }, svg);
+      const cls = id === here ? 'pin-dot from' : id === dest ? 'pin-dot to' : 'pin-dot';
+      el('circle', { cx: x, cy: y, r: id === here || id === dest ? 1.3 : 0.8, class: cls }, g);
+      if (id === here || id === dest) el('text', { x, y: y - 2, class: 'pin-label' }, g).textContent = n.short || n.name;
+      bindTile(g, id);
+    }
+    inner.appendChild(svg); wrap.appendChild(inner);
+    const zoom = document.createElement('div'); zoom.className = 'zoom-btns';
+    for (const [t, f] of [['−', 1 / 1.5], ['+', 1.5]]) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+      b.setAttribute('aria-label', t === '+' ? 'Zoom in' : 'Zoom out');
+      b.onclick = () => { photoZoom = Math.min(4, Math.max(1, photoZoom * f)); inner.style.width = `${photoZoom * 100}%`; };
+      zoom.appendChild(b);
+    }
+    const cap = document.createElement('p'); cap.className = 'hint map-credit'; cap.textContent = pinsData.attribution;
+    const box = $('route-map'); box.innerHTML = '';
+    box.appendChild(zoom); box.appendChild(wrap); box.appendChild(cap);
+  }
+
   async function drawMap(route, keepLevel) {
     try { await loadGraph(); } catch { return; }
     const path = route ? route.path : [];
@@ -161,6 +213,7 @@
       mapLevel = start ? lvKey(start) : graph.levels[0];
     }
     drawTabs(route);
+    if (venue === 'saltpalace' && !schematic) { await drawPhotoMap(route); return; }
     const nodes = graph.nodes.filter((n) => lvKey(n) === mapLevel);
     if (!nodes.length) return;
     const xs = nodes.map((n) => n.x), ys = nodes.map((n) => n.y), pad = 8;
@@ -292,6 +345,12 @@
         drawPills(); await loadNodes(); drawMap(null); pickedDest = null; buildPicker();
       };
       pills.appendChild(b);
+    }
+    if ((venue || 'theshop') === 'saltpalace') {
+      const sb = document.createElement('button');
+      sb.type = 'button'; sb.textContent = schematic ? 'Venue map' : 'Schematic';
+      sb.onclick = () => { schematic = !schematic; drawPills(); drawMap(lastRoute, true); };
+      pills.appendChild(sb);
     }
   }
   $('level-tabs').before(pills);

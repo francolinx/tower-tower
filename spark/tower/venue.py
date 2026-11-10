@@ -262,7 +262,7 @@ class Venues:
         self.default = default if (self.dir / f"{default}.json").exists() else "saltpalace"
 
     def names(self) -> list[str]:
-        return sorted(p.stem for p in self.dir.glob("*.json"))
+        return sorted(p.stem for p in self.dir.glob("*.json") if not p.stem.endswith("_pins"))
 
     def get(self, name: str | None = None) -> Venue:
         name = name or self.default
