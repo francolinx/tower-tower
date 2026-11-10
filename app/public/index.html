@@ -65,8 +65,9 @@
         <p id="locate-status" class="hint" aria-live="polite">Locating uses room signs only, never faces or GPS.</p>
         <label for="dest">Take me to</label>
         <div class="row">
-          <input id="dest" list="venue-nodes" placeholder="e.g. 255 EF" autocomplete="off">
+          <input id="dest" list="venue-nodes" placeholder="type to filter, or pick below" autocomplete="off">
         </div>
+        <div id="dest-picker" class="dest-picker" aria-label="Pick a destination by level"></div>
         <div class="row">
           <label class="check"><input type="checkbox" id="stepfree"> Step-free (elevators only)</label>
         </div>

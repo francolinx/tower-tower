@@ -289,12 +289,56 @@
         $('where').value = ''; $('dest').value = ''; $('route-steps').innerHTML = ''; $('route-summary').textContent = '';
         params.set('venue', id); params.delete('to'); params.delete('from');
         history.replaceState(null, '', location.pathname + '?' + params.toString());
-        drawPills(); await loadNodes(); drawMap(null);
+        drawPills(); await loadNodes(); drawMap(null); pickedDest = null; buildPicker();
       };
       pills.appendChild(b);
     }
   }
   $('level-tabs').before(pills);
   drawPills();
-  loadNodes().then(() => { drawPills(); drawMap(null); });
+  // ---- destination picker: accordion by level, chips per room/booth/POI; the text box filters
+  const PICK_KINDS = new Set(['room', 'booth', 'poi']);
+  let pickedDest = null;
+  const openKey = () => `tower.pickerLevel.${venue || 'default'}`;
+  function getOpen() { try { return localStorage.getItem(openKey()); } catch { return null; } }
+  function setOpen(lv) { try { lv ? localStorage.setItem(openKey(), lv) : localStorage.removeItem(openKey()); } catch {} }
+  async function buildPicker() {
+    const box = $('dest-picker');
+    try { await loadGraph(); } catch { box.innerHTML = ''; return; }
+    const q = $('dest').value.trim().toLowerCase();
+    const filtering = q.length > 0 && !idFromInput($('dest'));
+    const open = getOpen();
+    box.innerHTML = '';
+    for (const lv of graph.levels) {
+      let items = graph.nodes.filter((n) => lvKey(n) === lv && PICK_KINDS.has(n.kind));
+      if (filtering) items = items.filter((n) => (n.name + ' ' + (n.short || '') + ' ' + (n.aliases || []).join(' ')).toLowerCase().includes(q));
+      if (!items.length) continue;
+      const expanded = filtering || open === lv;
+      const sec = document.createElement('div'); sec.className = 'pick-level';
+      const h = document.createElement('button');
+      h.type = 'button'; h.className = 'pick-head'; h.setAttribute('aria-expanded', String(expanded));
+      h.textContent = `${/^\d+$/.test(lv) ? 'L' + lv : lv} · ${items.length}`;
+      h.onclick = () => { setOpen(open === lv ? null : lv); buildPicker(); };
+      sec.appendChild(h);
+      if (expanded) {  // chips only for open levels: Salt Palace stays fast
+        const chips = document.createElement('div'); chips.className = 'pick-chips';
+        for (const n of items.sort((a, b) => (a.short || a.name).localeCompare(b.short || b.name))) {
+          const c = document.createElement('button');
+          c.type = 'button'; c.className = 'chip'; c.textContent = n.short || n.name; c.title = n.name;
+          c.setAttribute('aria-pressed', String(n.id === pickedDest));
+          c.onclick = () => {
+            pickedDest = n.id; setOpen(lv); setInput($('dest'), n.id);
+            mapLevel = null;  // route() redraws on the route's start level
+            if (idFromInput($('where'))) route(); else { $('route-summary').textContent = 'Pick where you are first.'; }
+            buildPicker();
+          };
+          chips.appendChild(c);
+        }
+        sec.appendChild(chips);
+      }
+      box.appendChild(sec);
+    }
+  }
+  $('dest').addEventListener('input', () => buildPicker());
+  loadNodes().then(() => { drawPills(); drawMap(null); buildPicker(); });
 })();

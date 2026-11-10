@@ -74,3 +74,13 @@ footer a { color: var(--accent); font-size: 14px; }
 .route-map .ripple { fill: none; stroke: rgba(80,200,120,0.9); stroke-width: 0.6; animation: tower-ripple 1.2s ease-out 2; }
 @keyframes tower-ripple { from { r: 2; opacity: 1; } to { r: 9; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .route-map .ripple { animation: none; } }
+
+/* destination picker */
+.dest-picker { margin: 6px 0 10px; }
+.pick-head { display: block; width: 100%; text-align: left; min-height: 44px; font-size: 18px; padding: 8px 12px; margin-top: 6px;
+  background: rgba(255,255,255,0.05); color: var(--fg); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; }
+.pick-head[aria-expanded="true"] { border-color: var(--accent); }
+.pick-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.chip { min-height: 44px; font-size: 20px; padding: 6px 14px; border-radius: 22px; border: 1px solid var(--accent);
+  background: none; color: var(--fg); }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
