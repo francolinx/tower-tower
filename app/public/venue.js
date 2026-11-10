@@ -188,6 +188,7 @@
       return;
     }
     line(pts, `route dim ${extra}`);
+    if (!active.length) return;
     const d = line(active, `route active ${extra}`);
     const dot = el('circle', { r, class: 'dot' }, svg);
     if (d && !reduceMotion()) el('animateMotion', { dur: `${Math.max(1.5, active.length * 0.6)}s`, repeatCount: 'indefinite', path: d }, dot);
@@ -230,7 +231,6 @@
     const sc = Math.max(1, Math.min(4, 100 / Math.max(w, h)));
     const cx = x + w / 2, cy = y + h / 2;
     const tx = Math.max(100 - 100 * sc, Math.min(0, 50 - cx * sc)), ty = Math.max(100 - 100 * sc, Math.min(0, 50 - cy * sc));
-    inner.parentElement.style.overflow = 'hidden';
     inner.style.transition = reduceMotion() ? '' : 'transform 400ms cubic-bezier(.2,.7,.3,1)';
     inner.style.transform = `translate(${tx}%, ${ty}%) scale(${sc})`;
   }
@@ -345,7 +345,6 @@
       bindTile(g, id);
     }
     inner.appendChild(svg); wrap.appendChild(inner);
-    photoFollow(inner, active, H);
     const zoom = document.createElement('div'); zoom.className = 'zoom-btns';
     for (const [t, f] of [['−', 1 / 1.5], ['+', 1.5]]) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
@@ -355,7 +354,10 @@
     }
     const cap = document.createElement('p'); cap.className = 'hint map-credit'; cap.textContent = pinsData.attribution;
     const box = $('route-map'); box.innerHTML = '';
-    box.appendChild(zoom); box.appendChild(wrap); box.appendChild(cap);
+    box.appendChild(zoom); box.appendChild(wrap);
+    void inner.offsetWidth;
+    photoFollow(inner, active, H);
+    box.appendChild(cap);
   }
 
   async function drawMap(route, keepLevel) {
