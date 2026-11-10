@@ -16,6 +16,7 @@ import os
 import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 from fastapi import (
@@ -28,6 +29,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from tower import embed, locate
@@ -287,6 +289,33 @@ async def venue_graph(venue_name: str | None = Query(default=None, alias="venue"
     """Whole graph (nodes with x/y + edges), same shape for every venue. Default: the demo venue."""
     v = pick_venue(venue_name)
     return {"venue": venues.name_of(venue_name), "venues": venues.names(), **v.graph()}
+
+
+# Official venue map rasters live OUTSIDE the repo (Linux Foundation artwork); served read-only.
+VENUE_IMG_DIR = Path(os.environ.get("TOWER_VENUE_IMG_DIR", "~/cnh-prep/data/venue")).expanduser()
+VENUE_IMAGES = {"saltpalace": "saltpalace.png", "expo": "expo.png"}
+MAP_ATTRIBUTION = "Map © The Linux Foundation, shown for the KubeCon NA 2026 demo"
+
+
+@app.get("/venue/{name}.png")
+async def venue_image(name: str):
+    fname = VENUE_IMAGES.get(name)
+    path = VENUE_IMG_DIR / fname if fname else None
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="no map image")
+    return FileResponse(path, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=3600", "X-Attribution": MAP_ATTRIBUTION})
+
+
+@app.get("/api/venue/pins")
+async def venue_pins(venue_name: str | None = Query(default=None, alias="venue", max_length=40)):
+    name = venues.name_of(venue_name)
+    path = venues.dir / f"{name}_pins.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="no pins for this venue")
+    data = json.loads(path.read_text())
+    data.pop("_comment", None)
+    return data
 
 
 @app.get("/api/venue/nodes")

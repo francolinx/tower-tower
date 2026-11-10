@@ -84,3 +84,16 @@ footer a { color: var(--accent); font-size: 14px; }
 .chip { min-height: 44px; font-size: 20px; padding: 6px 14px; border-radius: 22px; border: 1px solid var(--accent);
   background: none; color: var(--fg); }
 .chip[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+
+/* KubeCon venue map hero */
+.photo-map { overflow: auto; touch-action: pan-x pan-y pinch-zoom; border-radius: 8px; background: #fff; max-height: 70vh; }
+.photo-inner { position: relative; }
+.photo-inner img { display: block; width: 100%; height: auto; object-fit: contain; user-select: none; }
+.photo-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+.photo-route { stroke-width: 0.6; stroke-dasharray: 1.6 1; }
+.pin-dot { fill: #1c6dd0; stroke: #fff; stroke-width: 0.25; }
+.pin-dot.from { fill: #1f9d55; } .pin-dot.to { fill: #e8590c; }
+.photo-overlay .pin-label { fill: #111; font-size: 1.6px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 0.4px; }
+.zoom-btns { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
+.zoom-btns button { min-width: 44px; min-height: 44px; font-size: 22px; border-radius: 8px; border: 1px solid var(--accent); background: none; color: var(--fg); }
+.map-credit { font-size: 12px; margin-top: 4px; }
