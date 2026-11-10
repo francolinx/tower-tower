@@ -114,6 +114,44 @@
       tabs.appendChild(b);
     }
   }
+  // ---- tap a tile: destination (and route now); second tap within 1.5 s or long-press: origin
+  let ripple = null, lastTap = { id: null, t: 0, prevDest: null };
+  function goTo(id) {
+    lastTap = { id, t: Date.now(), prevDest: idFromInput($('dest')) };
+    setInput($('dest'), id);
+    if (idFromInput($('where'))) route(); else drawMap(null, true);
+  }
+  function iAmAt(id, restoreDest) {
+    if (restoreDest !== undefined) {
+      if (restoreDest) setInput($('dest'), restoreDest); else $('dest').value = '';
+    }
+    setInput($('where'), id); saveWhere(); ripple = id;
+    if (idFromInput($('dest')) && idFromInput($('dest')) !== id) route(); else drawMap(lastRoute, true);
+  }
+  function bindTile(g, id) {
+    let pressTimer = null, longPressed = false;
+    g.addEventListener('pointerdown', () => {
+      longPressed = false;
+      pressTimer = setTimeout(() => { longPressed = true; iAmAt(id); }, 550);
+    });
+    const cancel = () => clearTimeout(pressTimer);
+    g.addEventListener('pointerup', cancel);
+    g.addEventListener('pointerleave', cancel);
+    g.addEventListener('contextmenu', (e) => e.preventDefault());
+    g.addEventListener('click', () => {
+      if (longPressed) { longPressed = false; return; }
+      if (lastTap.id === id && Date.now() - lastTap.t < 1500) {
+        const prev = lastTap.prevDest; lastTap = { id: null, t: 0, prevDest: null };
+        iAmAt(id, prev);
+      } else goTo(id);
+    });
+    g.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      if (e.shiftKey) iAmAt(id); else goTo(id);
+    });
+  }
+
   async function drawMap(route, keepLevel) {
     try { await loadGraph(); } catch { return; }
     const path = route ? route.path : [];
@@ -143,8 +181,11 @@
       const w = Math.max(10, label.length * 1.3), h = 5;
       const cls = ['box', onRoute.has(n.id) ? 'on-route' : '', n.id === path[0] ? 'from' : '',
         n.id === path[path.length - 1] ? 'to' : ''].join(' ');
-      el('rect', { x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 1, class: cls }, svg);
-      el('text', { x, y }, svg).textContent = label;
+      const g = el('g', { class: 'tile', tabindex: '0', role: 'button',
+        'aria-label': `${n.name}: Enter = take me here, Shift+Enter = I am here` }, svg);
+      el('rect', { x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 1, class: cls }, g);
+      el('text', { x, y }, g).textContent = label;
+      bindTile(g, n.id);
     }
     const pts = path.map((id) => graph.byId.get(id)).filter((n) => n && String(n.level) === mapLevel).map(P);
     if (pts.length > 1) {
@@ -156,6 +197,11 @@
       } else {
         dot.setAttribute('cx', pts[pts.length - 1][0]); dot.setAttribute('cy', pts[pts.length - 1][1]);
       }
+    }
+    if (ripple && ids.has(ripple)) {  // "you are here" ripple after setting the origin
+      const [rx, ry] = P(graph.byId.get(ripple));
+      el('circle', { cx: rx, cy: ry, r: 2, class: 'ripple' }, svg);
+      ripple = null;
     }
     const box = $('route-map');
     box.innerHTML = '';

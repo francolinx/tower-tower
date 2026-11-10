@@ -69,3 +69,8 @@ h2 { font-size: 20px; margin: 0 0 8px; color: var(--accent); }
 @keyframes tower-dash { to { stroke-dashoffset: -5; } }
 @media (prefers-reduced-motion: reduce) { .route-map .route { animation: none; } }
 footer a { color: var(--accent); font-size: 14px; }
+.route-map .tile { cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
+.route-map .tile:focus-visible rect, .route-map .tile:hover rect { stroke: #fff; stroke-width: 0.6; }
+.route-map .ripple { fill: none; stroke: rgba(80,200,120,0.9); stroke-width: 0.6; animation: tower-ripple 1.2s ease-out 2; }
+@keyframes tower-ripple { from { r: 2; opacity: 1; } to { r: 9; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .route-map .ripple { animation: none; } }
